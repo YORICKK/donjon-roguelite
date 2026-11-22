@@ -6,6 +6,7 @@ import { ENEMIES } from '../data/events.js';
 import { loadKit, tintKit, Batch, cloneProp, seeded } from './kit.js';
 import { Animator } from './anim.js';
 import { Fx } from './fx.js';
+import { getTheme, ROOM_DRESSING } from '../data/themes.js';
 
 const SPACING = 20; // distance entre centres de salles
 const WALL_H = 4;
@@ -31,7 +32,7 @@ export function createDungeonScene(canvas) {
   camera.add(fill);
   scene.add(camera);
   // Lumière principale qui suit la salle courante et projette les ombres des personnages
-  const keyLight = new THREE.SpotLight(0xffd9a8, 35, 26, 0.85, 0.6, 1.2);
+  const keyLight = new THREE.SpotLight(0xffd9a8, 24, 26, 0.85, 0.6, 1.2);
   keyLight.castShadow = !isTouch;
   keyLight.shadow.mapSize.set(1024, 1024);
   keyLight.shadow.bias = -0.0005;
@@ -277,14 +278,18 @@ export function createDungeonScene(canvas) {
     updateLights();
   }
 
-  // Coque d'une salle (sol, murs, arches, piliers, torches, couloir, décor) avec le kit Blender.
-  function shellKit(g, def, i, W, D, corridorLen, pal) {
+  // Coque d'une salle (sol, murs, arches, piliers, torches, couloir, décor) avec le kit Blender,
+  // habillée selon le biome du niveau (src/data/themes.js) et le type de salle.
+  const ALIGNED = new Set(['sarcophagus', 'coffin', 'minecart']); // posés dans l'axe du mur
+  function shellKit(g, def, i, W, D, corridorLen, pal, theme) {
     tintKit(kit, pal);
     const B = new Batch(kit);
     const rnd = seeded(i * 7919 + W * 131 + D * 17 + def.shape.torches);
+    const pick = (list) => list[Math.floor(rnd() * list.length)];
     const door = 3;
+    const floaters = [];
     for (let x = -W / 2 + 1; x < W / 2; x += 2) {
-      for (let z = -D / 2 + 1; z < D / 2; z += 2) B.add(`floor_${Math.floor(rnd() * 3)}`, [x, 0, z], Math.floor(rnd() * 4) * Math.PI / 2);
+      for (let z = -D / 2 + 1; z < D / 2; z += 2) B.add(pick(theme.floors), [x, 0, z], Math.floor(rnd() * 4) * Math.PI / 2);
     }
     const run = (ax, az, bx, bz) => {
       const L = Math.hypot(bx - ax, bz - az);
@@ -293,7 +298,7 @@ export function createDungeonScene(canvas) {
       const rot = Math.atan2(-(bz - az), bx - ax);
       for (let k = 0; k < n; k++) {
         const t = (k + 0.5) / n;
-        B.add(`wall_${Math.floor(rnd() * 2)}`, [ax + (bx - ax) * t, 0, az + (bz - az) * t], rot, [L / n / 2, 1, 1]);
+        B.add(pick(theme.walls), [ax + (bx - ax) * t, 0, az + (bz - az) * t], rot, [L / n / 2, 1, 1]);
       }
     };
     for (const z of [-D / 2, D / 2]) {
@@ -303,7 +308,12 @@ export function createDungeonScene(canvas) {
     }
     run(-W / 2, D / 2, -W / 2, -D / 2);
     run(W / 2, D / 2, W / 2, -D / 2);
-    for (let p = 0; p < def.shape.pillars; p++) B.add('pillar', [(p % 2 ? 1 : -1) * (W / 2 - 2), 0, (p < 2 ? -1 : 1) * (D / 2 - 2.5)]);
+    for (let p = 0; p < def.shape.pillars; p++) {
+      B.add(theme.pillar, [(p % 2 ? 1 : -1) * (W / 2 - 2), 0, (p < 2 ? -1 : 1) * (D / 2 - 2.5)], rnd() * Math.PI * 2);
+    }
+    if (theme.rails && rnd() < 0.55) {
+      for (let z = -D / 2 + 1; z < D / 2; z += 2) B.add('rails', [0.0, 0.01, z]);
+    }
 
     if (corridorLen > 0) {
       const z0 = -D / 2, z1 = -D / 2 - corridorLen;
@@ -311,7 +321,7 @@ export function createDungeonScene(canvas) {
       const seg = corridorLen / n;
       for (let k = 0; k < n; k++) {
         const z = z0 - seg * (k + 0.5);
-        B.add(`floor_${Math.floor(rnd() * 3)}`, [0, 0, z], 0, [door / 2, 1, seg / 2]);
+        B.add(pick(theme.floors), [0, 0, z], 0, [door / 2, 1, seg / 2]);
         B.add('ceiling', [0, WALL_H - 0.3, z], 0, [(door + 1.2) / 2, 1, seg / 2]);
       }
       run(-door / 2 - 0.3, z0, -door / 2 - 0.3, z1);
@@ -319,52 +329,139 @@ export function createDungeonScene(canvas) {
     }
     B.flush(g);
 
+    const place = (name, x, z, rotY = 0, y = 0, scale = 1) => {
+      if (!kit.pieces[name]) return null;
+      const p = cloneProp(kit, name);
+      p.position.set(x, y, z);
+      p.rotation.y = rotY;
+      if (scale !== 1) p.scale.setScalar(scale);
+      p.traverse((o) => { if (o.isMesh) o.receiveShadow = true; });
+      g.add(p);
+      return p;
+    };
+
     // Torches murales avec flamme
     const flameMat = new THREE.MeshBasicMaterial({ color: pal.torch });
     const flameGeo = new THREE.ConeGeometry(0.09, 0.28, 5);
+    const torchZ = [];
     for (let t = 0; t < def.shape.torches; t++) {
       const left = t % 2 === 0;
-      const torch = cloneProp(kit, 'torch');
-      torch.position.set(left ? -W / 2 + 0.3 : W / 2 - 0.3, 2.1, -D / 2 + ((t >> 1) + 1) * (D / 3));
-      torch.rotation.y = left ? -Math.PI / 2 : Math.PI / 2;
+      const z = -D / 2 + ((t >> 1) + 1) * (D / 3);
+      torchZ.push(z);
+      const torch = place('torch', left ? -W / 2 + 0.3 : W / 2 - 0.3, z, left ? -Math.PI / 2 : Math.PI / 2, 2.1);
       const flame = new THREE.Mesh(flameGeo, flameMat);
       flame.position.set(0, 0.72, -0.36);
-      flame.userData.flame = true;
-      torch.add(flame);
-      g.add(torch);
+      torch?.add(flame);
     }
 
-    // Décor aléatoire dans les coins (le centre reste libre pour l'événement)
-    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
-    for (const [sx, sz] of corners) {
-      if (rnd() < 0.35) continue;
-      const name = ['barrel', 'crate', 'bones', 'rubble', 'barrel'][Math.floor(rnd() * 5)];
-      const p = cloneProp(kit, name);
-      p.position.set(sx * (W / 2 - 1.1 - rnd() * 0.5), 0, sz * (D / 2 - 1.4 - rnd() * 0.6));
-      p.rotation.y = rnd() * Math.PI * 2;
-      g.add(p);
-      if (name === 'crate' && rnd() < 0.5) {
-        const top = cloneProp(kit, 'crate');
-        top.position.copy(p.position).setY(0.8);
-        top.rotation.y = rnd() * Math.PI;
-        top.scale.setScalar(0.8);
-        g.add(top);
+    // Étais de mine le long des murs latéraux
+    if (theme.supports) {
+      for (const sx of [-1, 1]) {
+        for (let z = -D / 2 + 1.2; z < D / 2 - 0.8; z += 3.2) {
+          if (torchZ.some((tz) => Math.abs(tz - z) < 0.6)) continue;
+          place(theme.supports, sx * (W / 2 - 0.3), z, sx < 0 ? Math.PI / 2 : -Math.PI / 2);
+        }
       }
     }
+
+    // Grands éléments contre les murs latéraux, vers le fond de la salle
     for (const sx of [-1, 1]) {
-      if (rnd() < 0.5) continue;
-      const b = cloneProp(kit, 'banner');
-      b.position.set(sx * Math.min(W / 2 - 1, 3), 3.5, -D / 2 + 0.36);
-      g.add(b);
+      if (rnd() < 0.3) continue;
+      const name = pick(theme.alongWalls);
+      const z = -D / 2 + 1.5 + rnd() * 0.6;
+      const aligned = ALIGNED.has(name);
+      place(name, sx * (W / 2 - (aligned ? 1.0 : 0.75)), z, aligned ? 0 : (sx < 0 ? Math.PI / 2 : -Math.PI / 2));
     }
+
+    // Décor selon le type de salle (lits de camp, râteliers, table…)
+    const dressing = ROOM_DRESSING[def.type] || [];
+    const slots = [[-(door / 2 + 1.4), -D / 2 + 0.55, 0], [door / 2 + 1.4, -D / 2 + 0.55, 0], [-(W / 2 - 1.6), 0.6, Math.PI / 2], [W / 2 - 1.6, 0.6, -Math.PI / 2]];
+    dressing.forEach((name, k) => {
+      const [x, z, r] = slots[k % slots.length];
+      if (name === 'bedroll') place(name, x * 0.8, z + 2.2, r + 0.3);
+      else place(name, x, z, r);
+    });
+
+    // Petit décor dans les coins (le centre reste libre pour l'événement)
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      if (rnd() < 0.3) continue;
+      const name = pick(theme.corners);
+      const p = place(name, sx * (W / 2 - 1.1 - rnd() * 0.4), sz * (D / 2 - 1.3 - rnd() * 0.5), rnd() * Math.PI * 2);
+      if (name === 'crate' && p && rnd() < 0.5) place('crate', p.position.x, p.position.z, rnd() * Math.PI, 0.8, 0.8);
+    }
+
+    // Toiles d'araignée dans les angles du plafond
+    for (const name of theme.ceilingCorners || []) {
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        if (rnd() < 0.4) continue;
+        const rot = Math.atan2(-sx, -sz) - Math.atan2(1, -1);
+        place(name, sx * (W / 2 - 0.32), sz * (D / 2 - 0.32), rot, 3.75, 1 + rnd() * 0.6);
+      }
+    }
+
+    // Pierres runiques flottantes
+    for (const name of theme.floating || []) {
+      for (let k = 0; k < 3; k++) {
+        const p = place(name, (rnd() - 0.5) * (W - 3), -D / 2 + 1 + rnd() * (D - 3), rnd() * 6, 1.6 + rnd() * 1.4);
+        if (p) floaters.push({ obj: p, y: p.position.y, phase: rnd() * 6, spin: 0.2 + rnd() * 0.4 });
+      }
+    }
+
+    if (theme.banner) {
+      for (const sx of [-1, 1]) {
+        if (rnd() < 0.5) continue;
+        const b = place('banner', sx * Math.min(W / 2 - 1, 3), -D / 2 + 0.36, 0, 3.5);
+        b?.traverse((o) => { if (o.isMesh) o.castShadow = false; });
+      }
+    }
+    return floaters;
+  }
+
+  // ---------- Particules d'ambiance (poussière, étincelles), centrées sur la caméra ----------
+  let ambient = null;
+  function setAmbient(theme) {
+    if (ambient) { scene.remove(ambient.points); ambient.points.geometry.dispose(); ambient.points.material.dispose(); ambient = null; }
+    const cfg = theme.particles;
+    if (!cfg) return;
+    const count = Math.round(cfg.count * (isTouch ? 0.5 : 1));
+    const pos = new Float32Array(count * 3);
+    const box = [12, 4, 16];
+    for (let k = 0; k < count; k++) pos.set([(Math.random() - 0.5) * box[0], Math.random() * box[1], -Math.random() * box[2]], k * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const points = new THREE.Points(geo, new THREE.PointsMaterial({
+      color: cfg.color, size: cfg.size, map: fx.tex, transparent: true, depthWrite: false, opacity: 0.75,
+      blending: cfg.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+    }));
+    points.frustumCulled = false;
+    scene.add(points);
+    ambient = { points, cfg, box, seeds: Array.from({ length: count }, () => Math.random() * 100) };
+  }
+  function animateAmbient(t, dt) {
+    if (!ambient) return;
+    const { points, cfg, box, seeds } = ambient;
+    points.position.set(0, 0, camera.position.z + 2);
+    const a = points.geometry.attributes.position.array;
+    for (let k = 0; k < seeds.length; k++) {
+      const s = seeds[k];
+      a[k * 3] += Math.sin(t * 0.3 + s) * cfg.speed * dt;
+      a[k * 3 + 1] += (cfg.rise + Math.cos(t * 0.5 + s) * cfg.speed * 0.5) * dt;
+      a[k * 3 + 2] += Math.cos(t * 0.2 + s * 1.3) * cfg.speed * dt;
+      if (a[k * 3 + 1] > box[1]) a[k * 3 + 1] = 0;
+      if (a[k * 3 + 1] < 0) a[k * 3 + 1] = box[1];
+    }
+    points.geometry.attributes.position.needsUpdate = true;
   }
 
   function build(roomDefs, level) {
     lastBuild = [roomDefs, level];
     clear();
     const pal = level.palette;
+    const theme = getTheme(level);
     scene.background = new THREE.Color(pal.fog);
-    scene.fog = new THREE.Fog(pal.fog, 6, 34);
+    scene.fog = new THREE.Fog(pal.fog, theme.fog[0], theme.fog[1]);
+    setAmbient(theme);
+    keyLight.color.set(pal.torch).lerp(new THREE.Color(0xffffff), 0.55);
     const floorMat = mat(pal.floor);
     const wallMat = mat(pal.wall);
 
@@ -379,7 +476,8 @@ export function createDungeonScene(canvas) {
 
       const nextDef = roomDefs[i + 1];
       const nextD = nextDef ? (nextDef.type === 'boss' ? nextDef.shape.d + 3 : nextDef.shape.d) : 0;
-      if (kit) shellKit(g, def, i, W, D, nextDef ? SPACING - D / 2 - nextD / 2 : 0, pal);
+      let floaters = [];
+      if (kit) floaters = shellKit(g, def, i, W, D, nextDef ? SPACING - D / 2 - nextD / 2 : 0, pal, theme);
       else {
       // Sol en dalles légèrement irrégulières
       const tiles = new THREE.Group();
@@ -450,7 +548,7 @@ export function createDungeonScene(canvas) {
       const props = buildProps(def, mat, kit);
       g.add(props.group);
       world.add(g);
-      rooms.push({ def, group: g, light, props, D });
+      rooms.push({ def, group: g, light, props, D, floaters });
     });
 
     current = 0;
@@ -520,6 +618,7 @@ export function createDungeonScene(canvas) {
     }
     flashLight.intensity *= 0.9;
     fx.update(dt);
+    animateAmbient(t, dt);
     const roomZ = -current * SPACING;
     keyLight.position.set(0, 7.5, camera.position.z - 1.5);
     keyLight.target.position.set(0, 0, roomZ - 1);
@@ -528,6 +627,7 @@ export function createDungeonScene(canvas) {
       if (Math.abs(i - current) > 1) return;
       r.light.intensity = (i === current ? 16 : 6) * (0.9 + Math.sin(t * 9 + i) * 0.05 + Math.sin(t * 23) * 0.03);
       animateProps(r.props, t, dt);
+      for (const f of r.floaters) { f.obj.position.y = f.y + Math.sin(t * 0.8 + f.phase) * 0.18; f.obj.rotation.y += f.spin * dt; }
     });
     renderer.render(scene, camera);
     requestAnimationFrame(tick);

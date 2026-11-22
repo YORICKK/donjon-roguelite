@@ -141,6 +141,15 @@ ennemi sans modèle garde automatiquement une forme simple.
 `src/scene/kit.js` le charge, teinte la pierre selon la palette du niveau et instancie murs et dalles.
 Si le GLB ne charge pas, la scène retombe sur les formes simples.
 
+**Biomes** : chaque niveau a un thème (`theme` dans `src/data/levels.js`) décrit dans `src/data/themes.js` :
+murs, sols, piliers, gros éléments contre les murs, décor des coins, objets flottants et particules d'ambiance.
+Les pièces sont dans `public/models/themes.glb` (collection Blender `Themes`) :
+Cryptes (murs à niche funéraire, sarcophage, statue, cercueil, stèle, cierges, urne, toiles d'araignée),
+Mines (paroi rocheuse, sol de terre, étais avec lanterne, rails, wagonnet, cristaux, minerai, stalagmites),
+Sanctuaire (pierre noire à runes lumineuses, dalles gravées, obélisque, brasero, bibliothèque, cristaux, pierres runiques flottantes),
+et du mobilier commun (râtelier d'armes, table, couchage) placé selon le type de salle (`ROOM_DRESSING`).
+Ajouter un biome = modéliser ses pièces, les exporter dans `themes.glb`, puis ajouter une entrée dans `THEMES`.
+
 Pour modifier une pièce : éditez-la dans Blender (collection `DungeonKit`), gardez son nom et son
 origine, puis exportez la collection en glTF binaire (`.glb`), Y en haut, couleurs par sommet
 « Active », vers `public/models/dungeon_kit.glb`.

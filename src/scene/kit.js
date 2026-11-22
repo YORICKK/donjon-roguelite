@@ -10,7 +10,8 @@ import { normalizeJointNames } from './anim.js';
 
 // enemies.glb : enemy_<id> pour chaque ennemi de data/events.js (face vers +Z, pieds à y=0), npc_marchand.
 // heroes.glb : hero_<classId> (guerrier, mage, voleur, clerc), même convention.
-const MODEL_FILES = ['dungeon_kit.glb', 'enemies.glb', 'heroes.glb'];
+// themes.glb : pièces des biomes (voir src/data/themes.js).
+const MODEL_FILES = ['dungeon_kit.glb', 'themes.glb', 'enemies.glb', 'heroes.glb'];
 
 export async function loadKit(files = MODEL_FILES) {
   const loader = new GLTFLoader();
@@ -31,6 +32,8 @@ export async function loadKit(files = MODEL_FILES) {
       // Sans carte d'environnement, un métal pur paraît noir : on garde un éclat discret.
       o.material.metalness = Math.min(o.material.metalness, 0.3);
       if (o.material.name === 'C_Holy') o.material.side = THREE.DoubleSide;
+      // Lueurs : intensité modérée pour garder la couleur (sinon elles saturent en blanc)
+      if (o.material.emissiveIntensity > 1) o.material.emissiveIntensity = o.material.name === 'M_RuneGlow' ? 0.7 : 1.2;
       if (o.material.name === 'M_Ghost' || o.material.name === 'C_Ghost') {
         o.material.transparent = true;
         o.material.opacity = 0.7;
