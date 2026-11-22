@@ -6,7 +6,7 @@ import {
   createGame, generateDungeon, getChoices, tallyVotes, votersFor, resolveChoice, advance, finishLevelUp, keptLoot,
   VOTE_SECONDS, PICK_SECONDS,
 } from './core/engine.js';
-import { profiles, multiLobbies, soloLobbies, makeCode, emptyProfile } from './net/index.js';
+import { profiles, multiLobbies, soloLobbies, makeCode, emptyProfile, mergeProfiles } from './net/index.js';
 import { createDungeonScene } from './scene/dungeon.js';
 import { toast } from './ui/dom.js';
 import { renderName, renderMenu, renderInventory, renderLobby, renderGame } from './ui/views.js';
@@ -333,6 +333,42 @@ const actions = {
   inventory() { app.screen = 'inventory'; render(); },
   menu() { app.screen = 'menu'; render(); },
   logout() { app.screen = 'name'; render(); },
+  /** Connexion Google : lie le compte invité (même progression) ou bascule sur un compte existant (fusion). */
+  async google() {
+    const typed = document.querySelector('#pseudo')?.value.trim();
+    const before = app.profile || app.cachedProfile || null;
+    let res;
+    try {
+      res = await profiles.google(); // la fenêtre Google s'ouvre tout de suite (geste de l'utilisateur)
+    } catch (e) {
+      console.error(e);
+      if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') toast('Connexion Google impossible : ' + (e.code || e.message));
+      return;
+    }
+    if (!res) return; // redirection en cours
+    let profile = await profiles.load(res.uid);
+    if (res.switched && before) {
+      profile = mergeProfiles(profile, before);
+      toast('Compte Google retrouvé : vos objets d’invité y ont été ajoutés.');
+    } else {
+      profile = profile || before;
+      toast('Connecté avec Google ✔ Votre progression est sauvegardée sur ce compte.');
+    }
+    const name = (typed || profile?.name || app.name || res.displayName?.split(' ')[0] || 'Aventurier').slice(0, 16);
+    profile = { ...(profile || emptyProfile(name)), name };
+    await profiles.save(res.uid, profile);
+    Object.assign(app, { uid: res.uid, name, profile, account: res, cachedProfile: profile, screen: 'menu' });
+    localStorage.setItem('donjon:name', name);
+    render();
+    if (pendingRoom) enterLobby(multiLobbies, pendingRoom.toUpperCase(), false);
+  },
+  async googleLogout() {
+    if (!confirm('Se déconnecter du compte Google ? Votre progression reste enregistrée sur ce compte.')) return;
+    await profiles.signOut();
+    Object.assign(app, { uid: null, profile: null, cachedProfile: null, account: null, screen: 'name' });
+    render();
+    toast('Déconnecté. Vous jouerez en invité jusqu’à la prochaine connexion.');
+  },
   copy() {
     navigator.clipboard?.writeText(inviteUrl()).then(() => toast('Lien copié !'), () => toast(inviteUrl()));
   },
@@ -407,6 +443,7 @@ ui.addEventListener('submit', async (e) => {
       app.name = name;
       localStorage.setItem('donjon:name', name);
       app.profile = (await profiles.load(app.uid)) || emptyProfile(name);
+      app.account = (await profiles.account?.()) || null;
       if (app.profile.name !== name) { app.profile.name = name; profiles.save(app.uid, app.profile); }
       app.screen = 'menu';
     } catch (err) {
@@ -422,5 +459,22 @@ ui.addEventListener('submit', async (e) => {
     if (code) enterLobby(multiLobbies, code, false);
   }
 });
+
+// Compte déjà mémorisé sur cet appareil : on précharge sa progression (utile pour la fusion vers Google)
+// et on reprend son pseudo.
+if (profiles.googleAvailable) {
+  profiles.account().then(async (acc) => {
+    if (!acc) return;
+    app.account = acc;
+    try { app.cachedProfile = await profiles.load(acc.uid); } catch { /* hors ligne */ }
+    if (acc.switched && acc.previousProfile) {
+      app.cachedProfile = mergeProfiles(app.cachedProfile, acc.previousProfile);
+      await profiles.save(acc.uid, app.cachedProfile);
+      toast('Compte Google retrouvé : vos objets d’invité y ont été ajoutés.');
+    }
+    if (!app.name) app.name = app.cachedProfile?.name || acc.displayName?.split(' ')[0] || '';
+    if (app.screen === 'name') render();
+  }).catch((e) => console.warn(e));
+}
 
 render();

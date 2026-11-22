@@ -342,3 +342,9 @@ input:focus, select:focus, button:focus-visible, .btn:focus-visible { outline: 2
 }
 
 .lines.intro { margin: 6px 0; padding: 8px 10px; border-radius: 10px; background: rgba(227, 178, 90, 0.12); border: 1px solid var(--line); }
+
+/* Connexion Google */
+button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-weight: 600; }
+@media (hover: hover) { button.google:hover:not(:disabled) { background: #f2f2f2; border-color: #c6c6c6; } }
+.account { display: flex; align-items: center; justify-content: center; gap: 8px; flex-wrap: wrap; font-size: 0.9rem; color: var(--muted); }
+.account b { color: var(--text); }

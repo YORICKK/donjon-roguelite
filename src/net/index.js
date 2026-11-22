@@ -19,3 +19,18 @@ export function makeCode(len = 5) {
 export function emptyProfile(name) {
   return { name, inventory: {}, unlockedLevel: 1, runs: 0, wins: 0 };
 }
+
+/** Fusionne deux progressions (ex. invité -> compte Google existant) : objets additionnés, meilleur niveau. */
+export function mergeProfiles(a, b) {
+  if (!a) return b ? { ...b } : null;
+  if (!b) return { ...a };
+  const inventory = { ...(a.inventory || {}) };
+  for (const [id, n] of Object.entries(b.inventory || {})) inventory[id] = (inventory[id] || 0) + n;
+  return {
+    ...a,
+    inventory,
+    unlockedLevel: Math.max(a.unlockedLevel || 1, b.unlockedLevel || 1),
+    runs: (a.runs || 0) + (b.runs || 0),
+    wins: (a.wins || 0) + (b.wins || 0),
+  };
+}

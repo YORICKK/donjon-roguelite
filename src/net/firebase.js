@@ -1,7 +1,10 @@
-// Backend Firebase : auth anonyme, Realtime Database pour les salons (temps réel),
-// Firestore pour les profils joueurs (inventaire persistant, niveaux débloqués).
+// Backend Firebase : auth (invité anonyme ou compte Google), Realtime Database pour les salons
+// (temps réel), Firestore pour les profils joueurs (inventaire persistant, niveaux débloqués).
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import {
+  getAuth, signInAnonymously, GoogleAuthProvider, linkWithPopup, signInWithPopup, signInWithCredential,
+  signInWithRedirect, linkWithRedirect, getRedirectResult, signOut,
+} from 'firebase/auth';
 import { getDatabase, ref, onValue, update, get, set, onDisconnect, serverTimestamp } from 'firebase/database';
 import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -23,20 +26,26 @@ function ensure() {
   if (!app) {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
+    auth.languageCode = 'fr';
     db = getDatabase(app);
     fs = getFirestore(app);
   }
 }
 
-function waitForUser() {
+/** Utilisateur déjà connecté (session mémorisée) ou nouvel invité anonyme. */
+async function currentOrAnonymous() {
   ensure();
-  return new Promise((resolve, reject) => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) { unsub(); resolve(user); }
-    });
-    signInAnonymously(auth).catch((e) => { unsub(); reject(e); });
-  });
+  await auth.authStateReady();
+  if (auth.currentUser) return auth.currentUser;
+  return (await signInAnonymously(auth)).user;
 }
+
+const describe = (user) => user && {
+  uid: user.uid,
+  google: !user.isAnonymous && user.providerData.some((p) => p.providerId === 'google.com'),
+  email: user.email || null,
+  displayName: user.displayName || null,
+};
 
 export const firebaseLobbies = {
   mode: 'firebase',
@@ -67,9 +76,62 @@ export const firebaseLobbies = {
 
 export const firebaseProfiles = {
   mode: 'firebase',
+  googleAvailable: true,
   async signIn() {
-    const user = await waitForUser();
-    return user.uid;
+    return (await currentOrAnonymous()).uid;
+  },
+  /** Compte déjà mémorisé sur cet appareil (sans en créer), et fin d'une éventuelle redirection Google. */
+  async account() {
+    ensure();
+    await auth.authStateReady();
+    // Retour d'une redirection Google (repli quand la fenêtre est bloquée)
+    const before = auth.currentUser;
+    const previousProfile = before?.isAnonymous ? await this.load(before.uid).catch(() => null) : null;
+    try {
+      await getRedirectResult(auth);
+    } catch (e) {
+      if (e.code === 'auth/credential-already-in-use') {
+        // Ce compte Google existait déjà : on bascule dessus, l'appelant fusionne la progression de l'invité.
+        const res = await signInWithCredential(auth, GoogleAuthProvider.credentialFromError(e));
+        return { ...describe(res.user), switched: true, previousProfile };
+      }
+      console.warn('Retour Google :', e.code);
+    }
+    return describe(auth.currentUser);
+  },
+  /**
+   * Connexion Google. Si un invité est déjà connecté, son compte est « lié » à Google : même identifiant,
+   * même progression. Si ce compte Google existait déjà ailleurs, on bascule dessus (`switched`) et
+   * l'appelant fusionne la progression de l'invité.
+   * À appeler directement depuis un clic (sinon le navigateur bloque la fenêtre Google).
+   */
+  async google() {
+    ensure();
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const user = auth.currentUser;
+    const previousUid = user?.uid || null;
+    try {
+      const res = user?.isAnonymous ? await linkWithPopup(user, provider) : await signInWithPopup(auth, provider);
+      return { ...describe(res.user), previousUid, switched: false };
+    } catch (e) {
+      if (e.code === 'auth/credential-already-in-use') {
+        const cred = GoogleAuthProvider.credentialFromError(e);
+        const res = await signInWithCredential(auth, cred);
+        return { ...describe(res.user), previousUid, switched: true };
+      }
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') {
+        // Repli : redirection vers Google (la page se recharge ensuite)
+        if (user?.isAnonymous) await linkWithRedirect(user, provider);
+        else await signInWithRedirect(auth, provider);
+        return null;
+      }
+      throw e;
+    }
+  },
+  async signOut() {
+    ensure();
+    await signOut(auth);
   },
   async load(uid) {
     ensure();

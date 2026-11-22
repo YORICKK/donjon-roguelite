@@ -50,7 +50,9 @@ export const localLobbies = {
 
 export const localProfiles = {
   mode: 'local',
+  googleAvailable: false,
   async signIn(name) { return `local-${slug(name)}`; },
+  async account() { return null; },
   async load(uid) { return read(PROFILE_KEY(uid)); },
   async save(uid, profile) { write(PROFILE_KEY(uid), profile); },
 };

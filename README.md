@@ -100,7 +100,8 @@ dans `ITEMS`. Les objets des premiers niveaux servent à survivre aux DD et enne
    firebase deploy --only database,firestore:rules
    ```
 
-9. Relancez `npm run dev` : le badge de l'écran d'accueil passe à « En ligne (Firebase) ».
+9. **Connexion Google** (facultatif) : Authentication > Sign-in method > activez **Google**. Le jeu affiche alors « Continuer avec Google ». Un invité qui se connecte garde sa progression (son compte est lié à Google) ; si ce compte Google existait déjà, les objets de l'invité y sont ajoutés. La progression suit alors le joueur sur tous ses appareils.
+10. Relancez `npm run dev` : le badge de l'écran d'accueil passe à « En ligne (Firebase) ».
    Pour tester à deux sur la même machine, utilisez une fenêtre privée ou un autre navigateur
    (l'auth anonyme est partagée entre les onglets d'un même navigateur).
 

@@ -5,7 +5,7 @@ import { LEVELS, getLevel } from '../data/levels.js';
 import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
 import { NODE_TYPES, CONSUMABLES, BOONS, XP_LEVELS, STATUS, ELITE } from '../data/run.js';
 import { computeCharacter, getChoices, getEvent, votersFor, previewChoice, keptLoot, nextNodes, shownType } from '../core/engine.js';
-import { online } from '../net/index.js';
+import { online, profiles } from '../net/index.js';
 import { esc, fmtMod } from './dom.js';
 
 const BASE = import.meta.env.BASE_URL;
@@ -34,6 +34,19 @@ export function itemChip(id, extra = '', attrs = '', selected = false) {
     <span class="ico">${it.icon}</span><span>${esc(it.name)}<br><span class="muted small">${esc(describeBonus(it.bonus))}</span></span>${extra}</button>`;
 }
 
+const G_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.4 5.7c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
+
+function accountBlock(app, where) {
+  if (!online || !profiles.googleAvailable) return '';
+  const acc = app.account;
+  if (acc?.google) {
+    return `<div class="account">${G_LOGO}<span>Connecté : <b>${esc(acc.email || acc.displayName || 'compte Google')}</b></span>
+      ${where === 'menu' ? '<button class="ghost small" data-action="googleLogout">Se déconnecter</button>' : ''}</div>`;
+  }
+  return `<button class="google" data-action="google">${G_LOGO}<span>${where === 'menu' ? 'Sauvegarder avec Google' : 'Continuer avec Google'}</span></button>
+    <p class="muted small">${where === 'menu' ? 'Vous jouez en invité : connectez Google pour retrouver vos objets sur tous vos appareils.' : 'Ou entrez un pseudo pour jouer en invité.'}</p>`;
+}
+
 const strip = () => `<div class="heroes-strip">${Object.keys(CLASSES).map((c) => `<img src="${portraitUrl(c)}" alt="" />`).join('')}</div>`;
 
 // ---------- Accueil ----------
@@ -49,6 +62,7 @@ export function renderName(app, pendingRoom) {
       <input id="pseudo" name="name" maxlength="16" placeholder="Votre pseudo" value="${esc(app.name)}" autocomplete="nickname" enterkeyhint="go" required />
       <button class="primary" ${app.busy ? 'disabled' : ''}>${pendingRoom ? 'Rejoindre la partie' : 'Entrer dans le donjon'}</button>
     </form>
+    ${accountBlock(app, 'name')}
     <div><span class="badge ${online ? 'online' : ''}">● ${online ? 'En ligne' : 'Mode local (Firebase non configuré)'}</span></div>
   </div></div>`;
 }
@@ -68,6 +82,7 @@ export function renderMenu(app) {
       <button>Rejoindre</button>
     </form>
     <button data-action="inventory">🎒 Inventaire (${inv})</button>
+    ${accountBlock(app, 'menu')}
     <button class="ghost small" data-action="logout">Changer de pseudo</button>
     ${online ? '' : '<p class="muted small">Mode local : le multijoueur marche entre onglets de ce navigateur.</p>'}
   </div></div>`;
