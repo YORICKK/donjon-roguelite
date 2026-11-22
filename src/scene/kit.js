@@ -8,7 +8,8 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 // enemies.glb : enemy_<id> pour chaque ennemi de data/events.js (face vers +Z, pieds à y=0), npc_marchand.
-const MODEL_FILES = ['dungeon_kit.glb', 'enemies.glb'];
+// heroes.glb : hero_<classId> (guerrier, mage, voleur, clerc), même convention.
+const MODEL_FILES = ['dungeon_kit.glb', 'enemies.glb', 'heroes.glb'];
 
 export async function loadKit(files = MODEL_FILES) {
   const loader = new GLTFLoader();

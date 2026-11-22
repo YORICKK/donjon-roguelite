@@ -1,0 +1,10 @@
+{
+  "name": "Donjon Roguelite",
+  "short_name": "Donjon",
+  "description": "Un donjon roguelike à choix multiples, en solo ou entre amis.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0a08",
+  "theme_color": "#0d0a08",
+  "icons": [{ "src": "/portraits/guerrier.png", "sizes": "256x256", "type": "image/png" }]
+}

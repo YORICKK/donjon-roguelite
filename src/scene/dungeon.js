@@ -9,8 +9,10 @@ const SPACING = 20; // distance entre centres de salles
 const WALL_H = 4;
 
 export function createDungeonScene(canvas) {
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const isTouch = matchMedia('(pointer: coarse)').matches;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  // Sur smartphone, on limite la résolution interne pour garder 60 i/s et la batterie.
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
   renderer.shadowMap.enabled = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -33,15 +35,86 @@ export function createDungeonScene(canvas) {
   let flashLight = new THREE.PointLight(0xffffff, 0, 14);
   scene.add(flashLight);
 
+  // bottomInset : hauteur (px) cachée par le panneau du bas sur mobile ; on décale l'image vers le haut
+  // pour que l'action reste visible au-dessus du panneau.
+  let bottomInset = 0;
   function resize() {
     const w = canvas.clientWidth || window.innerWidth;
     const h = canvas.clientHeight || window.innerHeight;
     renderer.setSize(w, h, false);
-    camera.aspect = w / h;
+    // FOV vertical : 62° en paysage ; en portrait on garde ~68° d'angle horizontal.
+    const aspect = w / h;
+    const vfov = aspect >= 1 ? 62 : Math.min(100, (2 * Math.atan(Math.tan((34 * Math.PI) / 180) / aspect) * 180) / Math.PI);
+    const k = Math.min(bottomInset / 2, h * 0.3);
+    if (k > 1) {
+      const fullH = h + 2 * k;
+      camera.fov = (2 * Math.atan((Math.tan((vfov * Math.PI) / 360) * fullH) / h) * 180) / Math.PI;
+      camera.aspect = w / fullH;
+      camera.setViewOffset(w, fullH, 0, 2 * k, w, h);
+    } else {
+      camera.fov = vfov;
+      camera.aspect = aspect;
+      camera.clearViewOffset();
+    }
     camera.updateProjectionMatrix();
   }
   window.addEventListener('resize', resize);
   resize();
+  function setBottomInset(px) {
+    if (Math.abs(px - bottomInset) < 4) return;
+    bottomInset = px;
+    resize();
+  }
+
+  // ---------- Groupe de héros (modèles Blender) qui suit la caméra ----------
+  const partyGroup = new THREE.Group();
+  scene.add(partyGroup);
+  let heroes = []; // { uid, classId, obj, alive, lunge }
+  let partyKey = '';
+  let lastMembers = [];
+  function setParty(members) {
+    lastMembers = members;
+    const key = JSON.stringify(members);
+    if (key === partyKey) return;
+    partyKey = key;
+    partyGroup.clear();
+    heroes = [];
+    if (!kit) return;
+    // Héros de part et d'autre de l'axe central, pour laisser voir l'ennemi ou l'objet.
+    const SLOTS = [[-1.15, 0], [1.15, 0], [-2.0, -1.0], [2.0, -1.0]];
+    members.forEach((m, idx) => {
+      const model = kit.pieces[`hero_${m.classId}`];
+      const obj = model ? model.clone(true) : new THREE.Group();
+      const [x, z] = SLOTS[idx % SLOTS.length];
+      obj.position.set(x, 0, z);
+      obj.userData.baseZ = z;
+      obj.rotation.y = Math.PI + x * 0.22; // de dos, tournés vers le centre de la salle
+      partyGroup.add(obj);
+      heroes.push({ ...m, obj, lunge: 0 });
+    });
+  }
+  function heroAct(uid) {
+    const h = heroes.find((x) => x.uid === uid);
+    if (h) h.lunge = 1;
+  }
+  function animateParty(t, dt) {
+    partyGroup.position.set(0, 0, camera.position.z - 3.4);
+    const walking = camT < 1;
+    heroes.forEach((h, i) => {
+      const o = h.obj;
+      h.lunge = Math.max(0, h.lunge - dt * 1.8);
+      const lungeZ = -Math.sin(h.lunge * Math.PI) * 0.8;
+      if (!h.alive) {
+        o.rotation.x = THREE.MathUtils.lerp(o.rotation.x, -Math.PI / 2, dt * 4);
+        o.position.y = THREE.MathUtils.lerp(o.position.y, 0.15, dt * 4);
+        return;
+      }
+      o.rotation.x = THREE.MathUtils.lerp(o.rotation.x, 0, dt * 6);
+      o.position.y = walking ? Math.abs(Math.sin(t * 9 + i)) * 0.08 : Math.sin(t * 2 + i) * 0.01;
+      o.position.z = o.userData.baseZ + lungeZ;
+      o.rotation.z = walking ? Math.sin(t * 9 + i) * 0.05 : 0;
+    });
+  }
 
   const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.9, ...extra });
 
@@ -59,7 +132,7 @@ export function createDungeonScene(canvas) {
   let kit = null;
   let lastBuild = null;
   loadKit()
-    .then((k) => { kit = k; if (lastBuild) { const keep = current; build(...lastBuild); jumpTo(keep); } })
+    .then((k) => { kit = k; if (lastBuild) { const keep = current; build(...lastBuild); jumpTo(keep); } partyKey = ''; setParty(lastMembers); })
     .catch((e) => console.warn('Kit 3D indisponible, rendu simplifié :', e));
 
   function jumpTo(i) {
@@ -256,7 +329,7 @@ export function createDungeonScene(canvas) {
 
   function placeCamera(i, out) {
     const r = rooms[i];
-    return out.set(0, 2.7, -i * SPACING + r.D / 2 - 1);
+    return out.set(0, 3.4, -i * SPACING + r.D / 2 - 0.6);
   }
 
   function updateLights() {
@@ -301,8 +374,9 @@ export function createDungeonScene(canvas) {
       camera.position.lerpVectors(camFrom, camTo, e);
       camera.position.y += Math.abs(Math.sin(camT * Math.PI * 8)) * 0.08 * (1 - camT);
     }
-    const look = new THREE.Vector3(0, 1.1, camera.position.z - 7);
+    const look = new THREE.Vector3(0, 1.0, camera.position.z - 7);
     camera.lookAt(look);
+    animateParty(t, dt);
     if (shake > 0) {
       camera.position.x = (Math.random() - 0.5) * shake;
       shake = Math.max(0, shake - dt * 1.5);
@@ -321,7 +395,7 @@ export function createDungeonScene(canvas) {
   requestAnimationFrame(tick);
 
   return {
-    build, goToRoom, setRoomState, flash, shakeHit,
+    build, goToRoom, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset,
     get current() { return current; },
     dispose() { running = false; clear(); renderer.dispose(); window.removeEventListener('resize', resize); },
   };

@@ -111,6 +111,27 @@ export function getChoices(game, players) {
   return choices;
 }
 
+/**
+ * Aperçu d'un choix pour l'interface : qui tentera l'action, son bonus, le DD et la chance de réussite.
+ * Retourne null pour les choix sans jet (prudents ou compétences).
+ */
+export function previewChoice(game, players, choice) {
+  if (!choice.stat || choice.skill) return null;
+  const level = getLevel(game.levelId);
+  const room = game.rooms[game.roomIndex];
+  let dc;
+  if (game.enemy) {
+    const a = COMBAT_ACTIONS.find((x) => x.id === choice.id);
+    dc = ENEMIES[game.enemy.id].dc + level.dcBonus + (a?.dcMod || 0) + (a?.flee ? -2 : 0);
+  } else {
+    dc = getEvent(room).choices.find((c) => c.id === choice.id).dc + level.dcBonus;
+  }
+  const champ = bestChampion(game, players, choice.stat);
+  if (!champ) return null;
+  const chance = Math.min(0.95, Math.max(0.05, (21 - (dc - champ.mod)) / 20));
+  return { uid: champ.uid, mod: champ.mod, dc, chance };
+}
+
 // ---------- Vote majoritaire ----------
 // Égalité : le vote de l'hôte l'emporte s'il fait partie des ex æquo, sinon le premier choix de la liste.
 export function tallyVotes(votes, choices, hostUid, rng) {
