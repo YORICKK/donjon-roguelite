@@ -52,6 +52,8 @@ function playRun(seed, levelId) {
     if (g.phase === 'result') { g = advance(g, seed); continue; }
     const choices = getChoices(g, players);
     assert.ok(choices.filter((c) => !c.disabled).length > 0, `aucun choix en phase ${g.phase}`);
+    assert.ok(choices.length <= 5, `${choices.length} choix proposés (max 5) en phase ${g.phase}`);
+    stats.maxChoices = Math.max(stats.maxChoices || 0, choices.length);
     for (const c of choices) {
       const p = previewChoice(g, players, c);
       if (p) assert.ok(p.chance >= 0.05 && p.chance <= 0.95);
@@ -137,4 +139,26 @@ test('fils rouges : un allié libéré affaiblit le boss, la déesse soigne', ()
   assert.ok(ally.enemy.hp < plain.enemy.hp, 'le boss devrait être affaibli');
   assert.ok(Object.values(ally.party).every((m) => m.hp === 9), 'la déesse soigne de 6');
   assert.equal(ally.intro.length, 2);
+});
+
+test('jamais plus de 5 choix, même à 4 héros avec un sac plein', () => {
+  const four = {
+    a: { name: 'A', classId: 'guerrier', equipped: [] }, b: { name: 'B', classId: 'mage', equipped: [] },
+    c: { name: 'C', classId: 'voleur', equipped: [] }, d: { name: 'D', classId: 'clerc', equipped: [] },
+  };
+  for (let s = 0; s < 60; s++) {
+    let g = createGame(`full${s}`, 1 + (s % 3), four);
+    g.bag = { potion_soin: 2, bombe: 2, eau_benite: 1, parchemin_fuite: 1 };
+    for (const m of Object.values(g.party)) m.hp = Math.ceil(m.maxHp / 3);
+    for (let step = 0; step < 6 && g.phase !== 'over'; step++) {
+      if (g.phase === 'result') { g = advance(g, 'x'); continue; }
+      if (g.phase === 'levelup') { g = finishLevelUp(g, 'x'); continue; }
+      const choices = getChoices(g, four);
+      assert.ok(choices.length <= 5, `${choices.length} choix`);
+      const ids = choices.map((c) => c.id);
+      if (g.phase === 'vote' && g.enemy) assert.ok(ids.includes('attaque'), 'l\'attaque reste toujours proposée');
+      if (g.phase === 'vote' && g.enemy) assert.ok(ids.includes('use:potion_soin'), 'potion proposée quand le groupe est blessé');
+      g = resolveChoice(g, four, choices.find((c) => !c.disabled).id, `full${s}`);
+    }
+  }
 });

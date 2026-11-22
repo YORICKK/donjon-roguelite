@@ -238,6 +238,7 @@ export function getChoices(game, players) {
   }
   const room = game.rooms[game.roomIndex];
   const choices = [];
+  let fleeChoice = null;
   if (room.type === 'shop') {
     (game.shop || []).forEach((o, i) => {
       if (o.sold) return;
@@ -252,8 +253,13 @@ export function getChoices(game, players) {
     const enemy = ENEMIES[game.enemy.id];
     for (const a of COMBAT_ACTIONS) {
       if (a.undeadOnly && !enemy.undead) continue;
+      if (a.notUndead && enemy.undead) continue; // contre les morts-vivants, « Repousser » remplace l'attaque sournoise
       if (a.noBoss && enemy.boss) continue;
-      choices.push({ id: a.id, label: a.label, stat: a.stat });
+      const stat = actionStat(game, players, a);
+      const label = a.stats ? (stat === 'int' ? 'Lancer un sort' : "Attaquer à l'arme") : a.label;
+      // Fuir n'est utile qu'en mauvaise posture : rangé avec les compétences et objets, selon l'état du groupe
+      if (a.flee) fleeChoice = { id: a.id, label, stat };
+      else choices.push({ id: a.id, label, stat });
     }
   } else {
     for (const c of getEvent(room).choices) {
@@ -263,13 +269,60 @@ export function getChoices(game, players) {
     }
   }
   const skillRoom = isFight(room) ? 'combat' : room.type;
+  const extras = [];
+  if (fleeChoice) extras.push({ ...fleeChoice, score: partyHealth(game).ratio < 0.35 ? 80 : 20 });
   for (const [uid, m] of Object.entries(game.party)) {
     if (!m.alive || m.skillUsed) continue;
     const cls = CLASSES[players[uid]?.classId];
     if (!cls || !cls.skill.on.includes(skillRoom)) continue;
-    choices.push({ id: `skill:${uid}`, label: `${cls.icon} ${cls.skill.name} (${players[uid].name})`, skill: true, desc: cls.skill.desc });
+    extras.push({ id: `skill:${uid}`, label: `${cls.icon} ${cls.skill.name} (${players[uid].name})`, skill: true, desc: cls.skill.desc, score: skillScore(game, cls.skill.id) });
   }
-  return [...choices, ...consumableChoices(game, room)];
+  for (const c of consumableChoices(game, room)) extras.push({ ...c, score: itemScore(game, c.id.slice(4)) });
+  return capChoices(choices, extras);
+}
+
+// ---------- 5 choix au maximum ----------
+export const MAX_CHOICES = 5;
+
+/** Les choix de la salle d'abord, puis les compétences et objets les plus utiles dans les places restantes. */
+function capChoices(base, extras) {
+  const kept = base.slice(0, MAX_CHOICES);
+  const room = MAX_CHOICES - kept.length;
+  extras.sort((a, b) => b.score - a.score);
+  return [...kept, ...extras.slice(0, room).map(({ score, ...c }) => c)];
+}
+
+function partyHealth(game) {
+  const alive = Object.values(game.party).filter((m) => m.alive);
+  const ratio = alive.reduce((s, m) => s + m.hp / m.maxHp, 0) / Math.max(1, alive.length);
+  return { ratio, low: alive.some((m) => m.hp / m.maxHp <= 0.4), poisoned: alive.some((m) => m.poison > 0) };
+}
+
+function skillScore(game, id) {
+  const h = partyHealth(game);
+  if (id === 'soin_de_groupe') return h.low || h.ratio < 0.6 ? 90 : 15;
+  if (id === 'mains_agiles') return 85;
+  return game.enemy?.intent === 'defend' ? 40 : 70; // coup puissant / boule de feu : ignorent la défense, utiles tout le temps
+}
+
+function itemScore(game, id) {
+  const h = partyHealth(game);
+  if (id === 'potion_soin') return h.low || h.poisoned ? 95 : 25;
+  if (id === 'parchemin_fuite') return h.ratio < 0.35 ? 88 : 5;
+  if (id === 'bombe') return game.enemy ? 45 + (game.enemy.hp / game.enemy.maxHp > 0.5 ? 10 : 0) : 0;
+  if (id === 'eau_benite') return 30;
+  return 10;
+}
+
+/** Stat d'une action de combat ; « Attaquer » prend la meilleure entre FOR et INT. */
+function actionStat(game, players, a) {
+  if (!a.stats) return a.stat;
+  let best = a.stats[0], bestMod = -99;
+  for (const st of a.stats) {
+    const c = bestChampion(game, players, st);
+    if (c && c.mod > bestMod) { best = st; bestMod = c.mod; }
+  }
+  return best;
 }
 
 /** Un choix d'événement est-il visible / jouable ? (classe présente, conditions, coût) */
@@ -567,10 +620,11 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   } else if (fight) {
     const action = COMBAT_ACTIONS.find((a) => a.id === choiceId);
     const e = ENEMIES[game.enemy.id];
-    const champ = bestChampion(game, players, action.stat);
+    const stat = actionStat(game, players, action);
+    const champ = bestChampion(game, players, stat);
     championUid = champ.uid;
-    label = `${players[champ.uid].name} : ${action.label}`;
-    rollRes = roll(rng, champ.mod, choiceDc(game, choiceId), action.stat);
+    label = `${players[champ.uid].name} : ${action.stats ? (stat === 'int' ? 'Lancer un sort' : "Attaquer à l'arme") : action.label}`;
+    rollRes = roll(rng, champ.mod, choiceDc(game, choiceId), stat);
     if (action.flee) {
       if (rollRes.success) { lines.push('Le groupe s’échappe dans le couloir suivant !'); roomDone = true; game.enemy.fled = true; enemyActs = false; }
       else { lines.push('Impossible de fuir !'); failed = true; }
@@ -578,7 +632,7 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
       if (rollRes.success) { guarded = true; lines.push('🛡️ Le groupe lève sa garde.'); }
       else { failed = true; lines.push('La garde est trop lente…'); }
     } else if (rollRes.success) {
-      let dmg = rng.int(1, champ.char.dmg) + Math.max(0, champ.char.stats[action.stat]);
+      let dmg = rng.int(1, champ.char.dmg) + Math.max(0, champ.char.stats[stat]);
       dmg = Math.round(dmg * (action.dmgMult || 1) * (rollRes.crit ? 2 : 1));
       game.enemy.hp -= dmg;
       lines.push(`${rollRes.crit ? 'CRITIQUE ! ' : ''}${e.name} subit ${dmg} dégâts.`);
