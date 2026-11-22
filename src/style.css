@@ -404,3 +404,14 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 .item.shiny.selected { box-shadow: 0 0 0 2px var(--gold) inset, 0 0 16px rgba(255, 200, 120, 0.7); }
 @keyframes shinyBorder { to { background-position: 0 0, 300% 0; } }
 @media (prefers-reduced-motion: reduce) { .item.shiny { animation: none; } }
+
+/* ---------- Niveau de héros permanent ---------- */
+.hero-lv { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; vertical-align: middle; }
+.hero-lv .chip { color: #1a1206; background: var(--gold); }
+.hero-lv .xpbar { display: inline-block; width: 90px; height: 6px; border-radius: 99px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.hero-lv.compact .xpbar { width: 44px; height: 4px; }
+.hero-lv .xpbar i { display: block; height: 100%; background: linear-gradient(90deg, var(--amber), var(--gold)); }
+.heroes { display: grid; gap: 8px; }
+.hero-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hero-row .portrait { width: 36px; height: 36px; }
+.hero-row b { min-width: 70px; }

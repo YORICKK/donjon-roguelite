@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   generateMap, createGame, getChoices, tallyVotes, resolveChoice, advance, finishLevelUp, keptLoot, votersFor,
-  nextNodes, previewChoice,
+  nextNodes, previewChoice, computeCharacter,
 } from '../src/core/engine.js';
 import { Rng } from '../src/core/rng.js';
 import { LEVELS } from '../src/data/levels.js';
@@ -221,4 +221,20 @@ test('variantes chromatiques : environ 1 fois sur 10, même pouvoir', async () =
     assert.equal(it.rarity, base.rarity);
     assert.equal(it.model, base.model);
   }
+});
+
+test('niveau de héros permanent : paliers, bonus cumulés et effet en run', async () => {
+  const { heroLevel, heroBonus, HERO_XP, HERO_MAX } = await import('../src/data/heroes.js');
+  assert.equal(heroLevel(0), 1);
+  assert.equal(heroLevel(HERO_XP[1] - 1), 1);
+  assert.equal(heroLevel(HERO_XP[1]), 2);
+  assert.equal(heroLevel(1e6), HERO_MAX);
+  const max = heroBonus('guerrier', HERO_MAX);
+  assert.deepEqual(max, { stats: { for: 2 }, hp: 8, dmg: 2, luck: 1 });
+  const base = computeCharacter('mage', [], [], null, 1);
+  const lv10 = computeCharacter('mage', [], [], null, HERO_MAX);
+  assert.equal(lv10.maxHp - base.maxHp, 8);
+  assert.equal(lv10.stats.int - base.stats.int, 2);
+  const g = createGame('hero', 1, { a: { name: 'A', classId: 'clerc', equipped: [], heroLevel: 4 } });
+  assert.equal(g.party.a.maxHp, computeCharacter('clerc').maxHp + 4);
 });

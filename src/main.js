@@ -1,5 +1,6 @@
 // Contrôleur de l'application : écrans, salon, boucle de l'hôte, sauvegarde du butin.
 import { MAX_EQUIPPED } from './data/items.js';
+import { heroLevel } from './data/heroes.js';
 import { LEVELS, getLevel } from './data/levels.js';
 import { Rng, randomSeed } from './core/rng.js';
 import {
@@ -317,6 +318,16 @@ async function maybeSaveRun() {
   if (app.savedRun === runKey || localStorage.getItem(`donjon:saved:${app.uid}`) === runKey) return;
   app.savedRun = runKey;
   localStorage.setItem(`donjon:saved:${app.uid}`, runKey);
+  // XP du run conservée sur le héros (même en cas de défaite)
+  const classId = L.players?.[app.uid]?.classId;
+  if (classId && g.xp > 0) {
+    const heroXp = { ...(app.profile.heroXp || {}) };
+    const before = heroXp[classId] || 0;
+    heroXp[classId] = before + g.xp;
+    app.profile.heroXp = heroXp;
+    app.heroGain = { runKey, classId, gain: g.xp, before: heroLevel(before), after: heroLevel(heroXp[classId]), xp: heroXp[classId] };
+    Promise.resolve(upd({ [`players/${app.uid}/heroLevel`]: app.heroGain.after })).catch(() => {});
+  }
   const inv = { ...(app.profile.inventory || {}) };
   for (const id of keptLoot(g)) inv[id] = (inv[id] || 0) + 1;
   app.profile.inventory = inv;
@@ -385,7 +396,9 @@ const actions = {
     try { await navigator.share({ title: 'Donjon Roguelite', text: inviteText(), url: inviteUrl() }); }
     catch (e) { if (e.name !== 'AbortError') actions.copy(); }
   },
-  class(el) { upd({ [`players/${app.uid}/classId`]: el.dataset.id }); },
+  class(el) {
+    upd({ [`players/${app.uid}/classId`]: el.dataset.id, [`players/${app.uid}/heroLevel`]: heroLevel(app.profile.heroXp?.[el.dataset.id] || 0) });
+  },
   equip(el) {
     const me = app.lobby.players[app.uid];
     let eq = [...(me.equipped || [])];

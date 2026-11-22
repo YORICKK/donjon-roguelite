@@ -4,6 +4,7 @@ import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus } from '../data/items.js';
 import { LEVELS, getLevel } from '../data/levels.js';
 import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
 import { NODE_TYPES, CONSUMABLES, BOONS, XP_LEVELS, STATUS, ELITE } from '../data/run.js';
+import { HERO_MAX, heroProgress, perkLabel } from '../data/heroes.js';
 import { computeCharacter, getChoices, getEvent, votersFor, previewChoice, keptLoot, nextNodes, shownType } from '../core/engine.js';
 import { online, profiles } from '../net/index.js';
 import { esc, fmtMod } from './dom.js';
@@ -67,6 +68,20 @@ export function renderName(app, pendingRoom) {
   </div></div>`;
 }
 
+// ---------- Niveau de héros (permanent, par classe) ----------
+function heroBar(app, classId, compact = false) {
+  const p = heroProgress(app.profile.heroXp?.[classId] || 0);
+  const next = p.level < HERO_MAX ? `${p.into}/${p.need} XP · prochain : ${perkLabel(classId, p.level + 1)}` : 'Niveau maximum';
+  return `<span class="hero-lv${compact ? ' compact' : ''}" title="${esc(next)}"><span class="chip">Niv. ${p.level}</span><span class="xpbar"><i style="width:${Math.round(p.frac * 100)}%"></i></span>${compact ? '' : `<span class="muted small">${esc(next)}</span>`}</span>`;
+}
+
+function heroGainLine(h) {
+  const up = h.after > h.before;
+  const perks = [];
+  for (let lv = h.before + 1; lv <= h.after; lv++) perks.push(perkLabel(h.classId, lv));
+  return `<p class="${up ? 'result-ok' : 'muted'}">⭐ ${esc(CLASSES[h.classId].name)} : +${h.gain} XP conservés${up ? ` — niveau ${h.after} ! (${esc(perks.join(', '))})` : ` (niveau ${h.after})`}</p>`;
+}
+
 // ---------- Menu ----------
 export function renderMenu(app) {
   const inv = Object.values(app.profile.inventory || {}).reduce((a, b) => a + b, 0);
@@ -98,6 +113,9 @@ export function renderInventory(app) {
     <h2>🎒 Inventaire</h2>
     <p class="muted small">Conservé entre les parties. Équipez jusqu'à ${MAX_EQUIPPED} objets avant chaque run.</p>
     <div class="items">${items.length ? items.map(([id, n]) => itemChip(id, `<span class="chip">×${n}</span>`)).join('') : '<p class="muted">Rien pour le moment. Ouvrez des coffres !</p>'}</div>
+    <h3 style="margin-top:14px">⭐ Héros</h3>
+    <p class="muted small">L’XP gagnée pendant un run, même perdu, reste acquise par la classe jouée et débloque des bonus permanents.</p>
+    <div class="heroes">${Object.values(CLASSES).map((c) => `<div class="hero-row">${portrait(c.id)}<b>${c.name}</b>${heroBar(app, c.id)}</div>`).join('')}</div>
     <h3 style="margin-top:14px">🐾 Compagnons</h3>
     <p class="muted small">Un compagnon par joueur et par run. On en trouve sur les boss, les élites, chez le marchand… ou en secourant un animal. ✨ 1 fois sur 10, c’est une variante chromatique : si vous avez les deux, choisissez celle qui vous accompagne.</p>
     <div class="items">${pets.length ? pets.map(([id]) => itemChip(id)).join('') : '<p class="muted">Aucun compagnon pour l\u2019instant.</p>'}</div>
@@ -117,7 +135,7 @@ export function renderLobby(app, L) {
   const equipped = me.equipped || [];
   const maxLevel = isHost ? app.profile.unlockedLevel || 1 : LEVELS.length;
   const level = getLevel(L.levelId);
-  const preview = me.classId ? computeCharacter(me.classId, equipped, [], me.companion || null) : null;
+  const preview = me.classId ? computeCharacter(me.classId, equipped, [], me.companion || null, me.heroLevel || 1) : null;
   const canShare = typeof navigator.share === 'function';
 
   return `
@@ -139,7 +157,7 @@ export function renderLobby(app, L) {
               <li class="${p.online === false ? 'offline' : ''}">
                 ${portrait(p.classId)}
                 <span class="grow">${uid === L.hostUid ? '👑 ' : ''}<b>${esc(p.name)}</b>${uid === app.uid ? ' <span class="muted">(vous)</span>' : ''}<br>
-                <span class="muted small">${p.classId ? CLASSES[p.classId].name : 'choisit sa classe…'}${ITEMS[p.companion]?.companion ? ` · ${ITEMS[p.companion].icon}${ITEMS[p.companion].shiny ? '✨' : ''} ${esc(ITEMS[p.companion].name)}` : ''}</span></span>
+                <span class="muted small">${p.classId ? `${CLASSES[p.classId].name} niv. ${p.heroLevel || 1}` : 'choisit sa classe…'}${ITEMS[p.companion]?.companion ? ` · ${ITEMS[p.companion].icon}${ITEMS[p.companion].shiny ? '✨' : ''} ${esc(ITEMS[p.companion].name)}` : ''}</span></span>
                 <span>${p.ready || app.solo ? '✅' : '⏳'}</span>
               </li>`).join('')}
           </ul>
@@ -161,7 +179,7 @@ export function renderLobby(app, L) {
             <button class="class-card ${me.classId === c.id ? 'selected' : ''}" style="--cc:${c.color}" data-action="class" data-id="${c.id}" ${me.ready && !app.solo ? 'disabled' : ''}>
               ${portrait(c.id, 'lg')}
               <span>
-                <span class="name">${c.name}</span><br>
+                <span class="name">${c.name}</span> ${heroBar(app, c.id, true)}<br>
                 <span class="desc">${c.desc}</span>
                 <span class="statline">${statLine(c.stats)}<span class="stat">❤️ ${c.hp}</span><span class="stat">🗡 d${c.dmg}</span></span>
               </span>
@@ -392,6 +410,7 @@ function renderOver(app, L) {
       : 'La mort est définitive pour ce run. Chacun ne sauve que l’objet le plus précieux.'}</p>
     <h3>Objets conservés ${inParty ? '' : '(spectateur)'}</h3>
     <div class="items">${kept.length ? kept.map((id) => itemChip(id)).join('') : '<span class="muted">Aucun.</span>'}</div>
+    ${app.heroGain && inParty && app.heroGain.runKey === `${app.code}|${L.seed}` ? heroGainLine(app.heroGain) : ''}
     ${win && g.levelId < LEVELS.length ? `<p class="result-ok">🔓 Niveau ${g.levelId + 1} débloqué : ${esc(getLevel(g.levelId + 1).name)} !</p>` : ''}
     <div class="action-bar">
       ${isHost ? '<button class="primary grow" data-action="relobby">Nouveau run</button>' : ''}

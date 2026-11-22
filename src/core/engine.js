@@ -9,19 +9,25 @@ import { CLASSES } from '../data/classes.js';
 import { ITEMS, RARITY, SHINY_CHANCE } from '../data/items.js';
 import { getLevel, MAP_EXTRA_WEIGHTS } from '../data/levels.js';
 import { ENEMIES, EVENTS, COMBAT_ACTIONS } from '../data/events.js';
+import { heroBonus } from '../data/heroes.js';
 import { NODE_TYPES, ELITE, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
 
 export const VOTE_SECONDS = 30;
 export const PICK_SECONDS = 25;
 
 // ---------- Personnages ----------
-/** Stats d'un personnage : classe + objets équipés + bonus de niveau (boons) du run. */
-export function computeCharacter(classId, equipped = [], boons = [], companion = null) {
+/** Stats d'un personnage : classe + niveau de héros permanent + objets équipés + bonus de niveau (boons) du run. */
+export function computeCharacter(classId, equipped = [], boons = [], companion = null, heroLv = 1) {
   const cls = CLASSES[classId];
   const stats = { ...cls.stats };
   let hp = cls.hp;
   let dmg = cls.dmg;
   let luck = 0;
+  const hb = heroBonus(classId, heroLv);
+  for (const [k, v] of Object.entries(hb.stats)) stats[k] += v;
+  hp += hb.hp;
+  dmg += hb.dmg;
+  luck += hb.luck;
   for (const itemId of [...equipped, ...(companion ? [companion] : [])]) {
     const b = ITEMS[itemId]?.bonus || {};
     for (const k of Object.keys(stats)) stats[k] += b[k] || 0;
@@ -39,7 +45,7 @@ export function computeCharacter(classId, equipped = [], boons = [], companion =
 
 const charOf = (game, players, uid) => {
   const p = players[uid];
-  return computeCharacter(p.classId, p.equipped || [], Object.values(game.party[uid]?.boons || {}), game.party[uid]?.pet || null);
+  return computeCharacter(p.classId, p.equipped || [], Object.values(game.party[uid]?.boons || {}), game.party[uid]?.pet || null, p.heroLevel || 1);
 };
 
 // ---------- Salles ----------
@@ -139,7 +145,7 @@ export function createGame(seed, levelId, players) {
   for (const [uid, p] of Object.entries(players)) {
     if (!p.classId) continue;
     const pet = ITEMS[p.companion]?.companion ? p.companion : null;
-    const c = computeCharacter(p.classId, p.equipped || [], [], pet);
+    const c = computeCharacter(p.classId, p.equipped || [], [], pet, p.heroLevel || 1);
     party[uid] = { hp: c.maxHp, maxHp: c.maxHp, alive: true, skillUsed: false, poison: 0, boons: [], pet };
   }
   const rng = new Rng(`${seed}|entrance`);

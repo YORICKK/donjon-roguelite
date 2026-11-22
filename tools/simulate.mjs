@@ -7,11 +7,13 @@ import {
   computeCharacter, getEvent,
 } from '../src/core/engine.js';
 import { Rng } from '../src/core/rng.js';
+import { pathToFileURL } from 'node:url';
 import { ITEMS, RARITY } from '../src/data/items.js';
 import { CLASSES } from '../src/data/classes.js';
 import { LEVELS } from '../src/data/levels.js';
 import { ENEMIES } from '../src/data/events.js';
 import { BOONS } from '../src/data/run.js';
+import { heroLevel } from '../src/data/heroes.js';
 
 const MAIN_STAT = { guerrier: 'for', mage: 'int', voleur: 'dex', clerc: 'sag' };
 
@@ -132,7 +134,7 @@ export function playRun(seed, levelId, players) {
     const choices = getChoices(g, players);
     g = resolveChoice(g, players, chooseVote(g, players, choices), seed);
   }
-  return { outcome: g.outcome, loot: keptLoot(g), rooms: g.rooms.length - 1 };
+  return { outcome: g.outcome, loot: keptLoot(g), rooms: g.rooms.length - 1, xp: g.xp || 0 };
 }
 
 // ---------- Équipement ----------
@@ -161,25 +163,29 @@ function winRate(classId, levelId, equipped, companion, N, tag) {
 }
 
 // ---------- Campagne complète ----------
-function campaign(classId, seed, maxRuns = 400) {
+export function campaign(classId, seed, maxRuns = 400, keepXp = true) {
   const owned = new Set();
+  let xp = 0;
   let unlocked = 1;
   const runsToClear = {};
   for (let run = 0; run < maxRuns && unlocked <= LEVELS.length; run++) {
     // stratégie : on tente le niveau le plus haut débloqué
     const level = unlocked;
-    const players = { solo: { name: 'Solo', classId, equipped: bestGear(classId, [...owned]), companion: bestPet([...owned]) } };
+    const players = { solo: { name: 'Solo', classId, equipped: bestGear(classId, [...owned]), companion: bestPet([...owned]), heroLevel: keepXp ? heroLevel(xp) : 1 } };
     const r = playRun(`${seed}-${run}`, level, players);
     for (const id of r.loot) owned.add(id);
+    xp += r.xp;
     if (r.outcome === 'victory') {
       runsToClear[level] = run + 1;
       unlocked = level + 1;
     }
   }
-  return { runsToClear, gear: bestGear(classId, [...owned]), pet: bestPet([...owned]), owned: owned.size };
+  return { runsToClear, heroLevel: heroLevel(xp), gear: bestGear(classId, [...owned]), pet: bestPet([...owned]), owned: owned.size };
 }
 
-// ---------- Rapport ----------
+// ---------- Rapport (seulement si lancé directement) ----------
+if (import.meta.url === pathToFileURL(process.argv[1] || '').href) report();
+function report() {
 const pct = (x) => `${Math.round(x * 100)} %`.padStart(5);
 const BEST = {
   guerrier: ['epee_runique', 'couronne_liche'], mage: ['baton_archimage', 'couronne_liche'],
@@ -213,4 +219,5 @@ for (const classId of Object.keys(CLASSES)) {
   };
   const done = res.filter((r) => r.runsToClear[3]).length;
   console.log(`${CLASSES[classId].name.padEnd(10)} ${med(1).padEnd(16)} ${med(2).padEnd(16)} ${med(3).padEnd(16)} ${done}/${C}`);
+}
 }
