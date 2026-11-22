@@ -8,8 +8,6 @@ import {
 } from '../src/core/engine.js';
 import { Rng } from '../src/core/rng.js';
 import { LEVELS } from '../src/data/levels.js';
-import { ITEMS } from '../src/data/items.js';
-
 const players = {
   a: { name: 'Alice', classId: 'guerrier', equipped: [] },
   b: { name: 'Bob', classId: 'mage', equipped: ['grimoire_use'] },
@@ -96,7 +94,7 @@ import { CONSUMABLES } from '../src/data/run.js';
 import { CLASSES } from '../src/data/classes.js';
 
 const EFFECT_KEYS = new Set(['text', 'damage', 'damageAll', 'heal', 'gold', 'loot', 'lootBoost', 'xp', 'poison', 'poisonAll', 'bless',
-  'item', 'maxHp', 'refreshSkills', 'flag', 'unflag', 'curse', 'cleanse', 'reveal', 'next', 'cure']);
+  'item', 'maxHp', 'refreshSkills', 'flag', 'unflag', 'curse', 'cleanse', 'reveal', 'next', 'cure', 'companion', 'companionBoost']);
 
 test('contenu des événements cohérent', () => {
   const all = Object.values(EVENTS).flat();
@@ -161,4 +159,51 @@ test('jamais plus de 5 choix, même à 4 héros avec un sac plein', () => {
       g = resolveChoice(g, four, choices.find((c) => !c.disabled).id, `full${s}`);
     }
   }
+});
+
+import { ITEMS } from '../src/data/items.js';
+
+test('compagnons : pouvoirs en jeu et obtention', () => {
+  const pp = (pet) => ({ a: { name: 'A', classId: 'guerrier', equipped: [], companion: pet }, b: { name: 'B', classId: 'mage', equipped: [] } });
+  const enterFight = (P, seed, levelId = 3) => {
+    let g = createGame(seed, levelId, P);
+    const n = g.map.floors[0][0];
+    n.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
+    return resolveChoice(g, P, `go:${n.id}`, seed);
+  };
+  // Dragon : souffle à l'entrée du combat
+  const withDragon = enterFight(pp('pet_dragon'), 'd1');
+  const without = enterFight(pp(null), 'd1');
+  assert.ok(withDragon.enemy.hp < without.enemy.hp, 'le dragon doit brûler l\'ennemi');
+  assert.ok(withDragon.intro.some((l) => l.includes('dragonnet')));
+  // Ours : +4 PV et coups atténués
+  const bearGame = createGame('b1', 1, pp('pet_ours'));
+  const plainGame = createGame('b1', 1, pp(null));
+  assert.equal(bearGame.party.a.maxHp, plainGame.party.a.maxHp + 4);
+  // Loup : mord au moins une fois sur plusieurs tours
+  let bites = 0;
+  for (let k = 0; k < 30; k++) {
+    const g = enterFight(pp('pet_loup'), `w${k}`);
+    const r = resolveChoice(g, pp('pet_loup'), 'defendre', `w${k}`);
+    if (r.lastResult.pets.some((p) => p.kind === 'bite')) bites++;
+  }
+  assert.ok(bites > 3 && bites < 25, `morsures : ${bites}/30`);
+  // Un compagnon n'est jamais tiré comme objet ordinaire, mais bien par l'événement
+  for (let k = 0; k < 200; k++) {
+    for (const lv of [1, 2, 3]) {
+      const g = createGame(`c${k}`, lv, pp(null));
+      assert.ok(!g.loot.some((id) => ITEMS[id].companion));
+    }
+  }
+  let found = 0;
+  for (let k = 0; k < 40; k++) {
+    let g = createGame(`ev${k}`, 1, pp(null));
+    const n = g.map.floors[0][0];
+    n.room = { type: 'npc', eventId: 'animal_blesse', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
+    g = resolveChoice(g, pp(null), `go:${n.id}`, `ev${k}`);
+    g.gold = 10;
+    g = resolveChoice(g, pp(null), 'nourrir', `ev${k}`);
+    if (g.loot.some((id) => ITEMS[id].companion)) found++;
+  }
+  assert.equal(found, 40, 'nourrir l\'animal donne toujours un compagnon');
 });

@@ -13,7 +13,8 @@ import { normalizeJointNames } from './anim.js';
 // enemies.glb : enemy_<id> pour chaque ennemi de data/events.js (face vers +Z, pieds à y=0), npc_marchand.
 // heroes.glb : hero_<classId> (guerrier, mage, voleur, clerc), même convention.
 // themes.glb : pièces des biomes (voir src/data/themes.js).
-const MODEL_FILES = ['dungeon_kit.glb', 'themes.glb', 'enemies.glb', 'heroes.glb'];
+// companions.glb : pet_<id> (écureuil, chien, loup, ours, dragon), quadrupèdes articulés comme le rat.
+const MODEL_FILES = ['dungeon_kit.glb', 'themes.glb', 'enemies.glb', 'heroes.glb', 'companions.glb'];
 
 export async function loadKit(files = MODEL_FILES) {
   const loader = new GLTFLoader();
@@ -115,7 +116,7 @@ function bakeScene(gltf) {
 // Chaque membre articulé (hips, arm_R…) devient un « os » ; tous les morceaux ordinaires sont fusionnés
 // en un SkinnedMesh dont chaque sommet suit son membre à 100 %. Les animations (anim.js) visent toujours
 // les mêmes nœuds nommés, mais un personnage ne coûte plus qu'un ou deux appels de dessin.
-const CHARACTER = /^(hero|enemy|npc)_/;
+const CHARACTER = /^(hero|enemy|npc|pet)_/;
 const EMPTY = new THREE.BufferGeometry();
 
 function skinCharacters(gltf) {

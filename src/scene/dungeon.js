@@ -7,6 +7,7 @@ import { loadKit, tintKit, Batch, cloneProp, cloneModel, seeded } from './kit.js
 import { Animator } from './anim.js';
 import { Fx } from './fx.js';
 import { getTheme, ROOM_DRESSING } from '../data/themes.js';
+import { ITEMS } from '../data/items.js';
 
 const SPACING = 20; // distance entre centres de salles
 
@@ -156,7 +157,7 @@ export function createDungeonScene(canvas) {
   function setParty(members) {
     lastMembers = members;
     // On ne reconstruit le groupe que si sa composition change ; la mort est animée sur place.
-    const key = JSON.stringify(members.map((m) => [m.uid, m.classId]));
+    const key = JSON.stringify(members.map((m) => [m.uid, m.classId, m.pet || null]));
     if (key === partyKey) {
       for (const m of members) {
         const h = heroes.find((x) => x.uid === m.uid);
@@ -184,7 +185,20 @@ export function createDungeonScene(canvas) {
       partyGroup.add(obj);
       const anim = new Animator(obj);
       if (!m.alive) anim.die();
-      heroes.push({ ...m, obj, lunge: 0, anim });
+      // Compagnon de chaque héros
+      let pet = null;
+      const petDef = ITEMS[m.pet];
+      if (petDef?.companion && kit.pieces[petDef.model]) {
+        const pobj = cloneModel(kit.pieces[petDef.model]);
+        castShadows(pobj);
+        // devant son maître, vers le centre : la caméra plongeante le montre sous l'ennemi
+        pobj.position.set(x * 0.6, 0, z - 0.9);
+        pobj.rotation.y = obj.rotation.y;
+        pobj.scale.setScalar({ useless: 1.8, guard: 0.8 }[petDef.power] || 1);
+        partyGroup.add(pobj);
+        pet = { obj: pobj, anim: new Animator(pobj), power: petDef.power, baseY: petDef.power === 'breath' ? 0.55 : 0 };
+      }
+      heroes.push({ ...m, obj, lunge: 0, anim, pet });
     });
   }
   function heroAct(uid) {
@@ -196,6 +210,11 @@ export function createDungeonScene(canvas) {
     const walking = camT < 1;
     heroes.forEach((h, i) => {
       const o = h.obj;
+      if (h.pet) {
+        h.pet.anim.setBase(walking ? 'walk' : 'idle');
+        h.pet.anim.update(dt);
+        if (h.pet.baseY) h.pet.obj.position.y = h.pet.baseY + Math.sin(t * 2.2 + i) * 0.12;
+      }
       if (h.anim.rigged) {
         h.anim.setBase(walking ? 'walk' : 'idle');
         h.anim.update(dt);
@@ -301,10 +320,34 @@ export function createDungeonScene(canvas) {
         if (h) fx.burst(worldPos(h.obj, 1.0), 0x7ccf5a, { count: 16, speed: 1, up: 2, gravity: 1, life: 0.9, size: 0.14 });
       }
     });
+    if (r.pets?.length) playPets(r.pets, t + 250);
     if (r.chestOpen) later(t + 200, () => {
       setRoomState({ chestOpen: true });
       const c = rooms[current]?.props.lid;
       if (c) fx.burst(c.getWorldPosition(new THREE.Vector3()).setY(1.2), 0xffd36b, { count: 40, speed: 2.5, up: 3, life: 1.2, size: 0.16 });
+    });
+  }
+
+  /** Actions visibles des compagnons : morsure (loup), souffle (dragon), fouille (chien), protection (ours). */
+  function playPets(list, delay = 0) {
+    const enemy = enemyObj();
+    list.forEach(({ uid, kind }, k) => {
+      const h = heroes.find((x) => x.uid === uid);
+      if (!h?.pet) return;
+      later(delay + k * 250, () => {
+        h.pet.anim.play('attack');
+        const at = worldPos(h.pet.obj, h.pet.baseY + 0.4);
+        if (kind === 'breath' && enemy) {
+          fx.projectile(at, worldPos(enemy, 1.2), 0xff5a1a, { duration: 0.45, size: 0.3 });
+          later(450, () => { shakeHit(0.2); setRoomState({ enemyHpFrac: rooms[current]?.props.hpFrac }); });
+        } else if (kind === 'bite' && enemy) {
+          later(380, () => { fx.burst(worldPos(enemy, 0.9), 0xffffff, { count: 16, speed: 2.5 }); rooms[current]?.props.anim?.play('hit'); });
+        } else if (kind === 'dig') {
+          fx.burst(worldPos(h.pet.obj, 0.2), 0xffd36b, { count: 24, speed: 2, up: 3, life: 1 });
+        } else if (kind === 'guard') {
+          fx.ring(worldPos(h.obj, 0), 0xb07a3c, { radius: 1, life: 0.6 });
+        }
+      });
     });
   }
 
@@ -708,7 +751,7 @@ export function createDungeonScene(canvas) {
   requestAnimationFrame(tick);
 
   return {
-    build, goToRoom, jumpTo, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset, playResult, cheer,
+    build, goToRoom, jumpTo, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset, playResult, cheer, playPets,
     get current() { return current; },
     /** Diagnostic de performance (appels de dessin, triangles, lumières, shaders). */
     stats() {

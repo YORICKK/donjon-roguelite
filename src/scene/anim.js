@@ -6,7 +6,7 @@
 //
 // Humanoïde : hips > torso > head, arm_L/arm_R > forearm_L/forearm_R > hand_L/hand_R ;
 //             hips > leg_L/leg_R > shin_L/shin_R   (les modèles en robe n'ont pas de jambes)
-// Quadrupède (rat) : body > head, tail, leg_FL, leg_FR, leg_BL, leg_BR
+// Quadrupède (rat, compagnons) : body > head, tail, leg_FL, leg_FR, leg_BL, leg_BR (+ wing_L, wing_R pour le dragonnet)
 //
 // Repère three.js : Y en haut, le personnage regarde vers +Z.
 //   rotation X négative = lever un bras / une jambe vers l'avant ; X positive sur torse = pencher en avant.
@@ -106,6 +106,9 @@ const QUADRUPED = {
     body: [[0, 0, 0, 0, 0, 0, 0], [0.8, 2, 0, 0, 0, 0.02, 0], [1.6, 0, 0, 0, 0, 0, 0]],
     head: [[0, 0, -10, 0], [0.4, 8, 10, 0], [0.8, 0, 15, 0], [1.2, 6, -12, 0], [1.6, 0, -10, 0]],
     tail: [[0, 0, -20, 0], [0.8, 0, 20, 0], [1.6, 0, -20, 0]],
+    // ailes (dragonnet) : battement lent
+    wing_L: [[0, 0, 0, 10], [0.8, 0, 0, -15], [1.6, 0, 0, 10]],
+    wing_R: [[0, 0, 0, -10], [0.8, 0, 0, 15], [1.6, 0, 0, -10]],
   },
   walk: {
     loop: true, duration: 0.5,
@@ -114,6 +117,8 @@ const QUADRUPED = {
     leg_FR: [[0, 30, 0, 0], [0.25, -30, 0, 0], [0.5, 30, 0, 0]],
     leg_BL: [[0, 30, 0, 0], [0.25, -30, 0, 0], [0.5, 30, 0, 0]],
     tail: [[0, 0, -15, 0], [0.25, 0, 15, 0], [0.5, 0, -15, 0]],
+    wing_L: [[0, 0, 0, 30], [0.25, 0, 0, -30], [0.5, 0, 0, 30]],
+    wing_R: [[0, 0, 0, -30], [0.25, 0, 0, 30], [0.5, 0, 0, -30]],
   },
   attack: { // morsure : bond en avant
     duration: 0.8,
@@ -123,6 +128,8 @@ const QUADRUPED = {
     leg_FR: [[0, 0, 0, 0], [0.45, -60, 0, 0], [0.8, 0, 0, 0]],
     leg_BL: [[0, 0, 0, 0], [0.45, 50, 0, 0], [0.8, 0, 0, 0]],
     leg_BR: [[0, 0, 0, 0], [0.45, 50, 0, 0], [0.8, 0, 0, 0]],
+    wing_L: [[0, 0, 0, 0], [0.25, 0, 0, 45], [0.45, 0, 0, -35], [0.8, 0, 0, 0]],
+    wing_R: [[0, 0, 0, 0], [0.25, 0, 0, -45], [0.45, 0, 0, 35], [0.8, 0, 0, 0]],
   },
   hit: {
     duration: 0.5,

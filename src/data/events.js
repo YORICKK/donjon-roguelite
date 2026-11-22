@@ -44,7 +44,8 @@ export const COMBAT_ACTIONS = [
 // Effets : text, damage (au héros qui agit), damageAll, heal (groupe), gold: [min, max], loot (probabilité),
 //   lootBoost, xp, poison (héros qui agit), poisonAll, bless (tours), item (consommable ajouté au sac),
 //   maxHp (+PV max à tous), refreshSkills, flag / unflag (fil rouge du run), curse, cleanse,
-//   reveal (révèle les portes « inconnues » de la carte), next (enchaîne un autre événement dans la même salle).
+//   reveal (révèle les portes « inconnues » de la carte), next (enchaîne un autre événement dans la même salle),
+//   companion (+ companionBoost) : un compagnon rejoint la collection (utilisable aux prochains runs).
 // themes : biomes où l'événement peut apparaître (absent = partout). hidden : seulement via « next ».
 // ---------------------------------------------------------------------------------------------
 export const EVENTS = {
@@ -131,6 +132,14 @@ export const EVENTS = {
   ],
 
   chest: [
+    {
+      id: 'oeuf', themes: ['mine', 'sanctum'], title: 'Un œuf brûlant',
+      text: 'Dans un nid de cendres, un œuf écailleux palpite de chaleur.',
+      choices: [
+        { id: 'couver', label: 'L’emporter avec précaution', stat: 'sag', dc: 13, success: { companion: true, companionBoost: 2, text: 'L’œuf éclot dans vos mains !' }, fail: { damage: 4, text: 'Trop chaud : il vous échappe et se brise.' } },
+        { id: 'vendre_o', label: 'Le garder pour le revendre', safe: true, success: { gold: [25, 40], text: 'Un collectionneur en donnera un bon prix.' } },
+      ],
+    },
     {
       id: 'coffre_ferre', title: 'Un coffre ferré',
       text: 'Un lourd coffre bardé de fer trône au centre de la pièce. Sa serrure est complexe.',
@@ -259,6 +268,15 @@ export const EVENTS = {
   ],
 
   npc: [
+    {
+      id: 'animal_blesse', title: 'Un animal blessé',
+      text: 'Un animal gémit, la patte prise dans un vieux piège à loup. Il vous regarde, méfiant.',
+      choices: [
+        { id: 'liberer_a', label: 'Ouvrir le piège doucement', stat: 'dex', dc: 11, success: { companion: true, xp: 2, text: 'L’animal se libère… et ne vous quitte plus.' }, fail: { damage: 3, text: 'Il prend peur, vous mord et s’enfuit.' } },
+        { id: 'soigner_a', label: 'Soigner sa patte', stat: 'sag', dc: 12, success: { companion: true, companionBoost: 1, text: 'Soigné et rassuré, il vous adopte.' }, fail: { text: 'Il s’échappe en boitant.' } },
+        { id: 'nourrir', label: 'Partager vos provisions (5 or)', cost: { gold: 5 }, safe: true, success: { companion: true, text: 'Un repas, et voilà un ami pour la vie.' } },
+      ],
+    },
     {
       id: 'marchand', title: 'Un marchand égaré',
       text: 'Un vieil homme couvert de sacoches vous fait signe. « Psst… un échange ? »',

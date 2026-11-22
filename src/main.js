@@ -121,6 +121,7 @@ function reactScene(g) {
     enemyHpFrac: g.enemy ? g.enemy.hp / g.enemy.maxHp : null,
     hurt,
     poisoned: r.poisoned || [],
+    pets: r.pets || [],
     healed: !!r.healed || r.lines.some((l) => l.startsWith('💚')),
     chestOpen: room.type === 'chest' && r.lines.some((l) => l.startsWith('🎁')),
   });
@@ -164,7 +165,13 @@ function syncScene() {
     }
     scene.goToRoom(g.roomIndex);
     if (g.phase === 'levelup' && app.levelFx !== g.plevel) { app.levelFx = g.plevel; scene.cheer(); }
-    scene.setParty(Object.entries(g.party).map(([uid, m]) => ({ uid, classId: L.players?.[uid]?.classId, alive: m.alive })));
+    scene.setParty(Object.entries(g.party).map(([uid, m]) => ({ uid, classId: L.players?.[uid]?.classId, alive: m.alive, pet: m.pet || null })));
+    // Souffle du dragonnet à l'entrée d'une salle de combat (une seule fois par salle)
+    const petKey = `${L.seed}|${g.roomIndex}`;
+    if (g.phase === 'vote' && g.round === 0 && g.introPets?.length && app.petIntro !== petKey) {
+      app.petIntro = petKey;
+      setTimeout(() => scene.playPets(g.introPets), 2300); // après l'arrivée de la caméra
+    }
     if (g.phase === 'vote' && g.enemy) scene.setRoomState({ enemyHpFrac: g.enemy.hp / g.enemy.maxHp });
   } else {
     if (app.builtSeed !== 'menu') {
@@ -173,7 +180,7 @@ function syncScene() {
     }
     // Dans le salon, on voit déjà son groupe se former
     const players = Object.entries(L?.players || {}).filter(([, p]) => p.classId && p.online !== false);
-    scene.setParty(players.map(([uid, p]) => ({ uid, classId: p.classId, alive: true })));
+    scene.setParty(players.map(([uid, p]) => ({ uid, classId: p.classId, alive: true, pet: p.companion || null })));
   }
 }
 
@@ -207,6 +214,7 @@ function normalize(L) {
     L.game.enemy = L.game.enemy || null;
     L.game.bag = L.game.bag || {};
     L.game.intro = L.game.intro ? Object.values(L.game.intro) : [];
+    L.game.introPets = L.game.introPets ? Object.values(L.game.introPets) : [];
     L.game.flags = L.game.flags || {};
     L.game.offers = L.game.offers || {};
     L.game.picks = L.game.picks || {};
@@ -215,6 +223,7 @@ function normalize(L) {
       L.game.lastResult.lines = Object.values(L.game.lastResult.lines || {});
       L.game.lastResult.hurt = Object.values(L.game.lastResult.hurt || {});
       L.game.lastResult.poisoned = Object.values(L.game.lastResult.poisoned || {});
+      L.game.lastResult.pets = Object.values(L.game.lastResult.pets || {});
     }
   }
   for (const p of Object.values(L.players || {})) p.equipped = p.equipped ? Object.values(p.equipped) : [];
@@ -385,6 +394,10 @@ const actions = {
     else if (eq.length < MAX_EQUIPPED) eq.push(id);
     else { toast(`Maximum ${MAX_EQUIPPED} objets.`); return; }
     upd({ [`players/${app.uid}/equipped`]: eq });
+  },
+  pet(el) {
+    const me = app.lobby.players[app.uid];
+    upd({ [`players/${app.uid}/companion`]: me.companion === el.dataset.id ? null : el.dataset.id });
   },
   ready() {
     const me = app.lobby.players[app.uid];

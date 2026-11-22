@@ -20,9 +20,33 @@ export const ITEMS = {
   cape_ombre: { name: "Cape d'ombre", icon: '🧥', rarity: 'epique', tier: 2, bonus: { dex: 2, hp: 2 } },
   baton_archimage: { name: "Bâton d'archimage", icon: '🪄', rarity: 'legendaire', tier: 3, bonus: { int: 3, dmg: 4 } },
   couronne_liche: { name: 'Couronne de la liche', icon: '👑', rarity: 'legendaire', tier: 3, bonus: { sag: 2, int: 2, hp: 4 } },
+
+  // ---------- Compagnons : conservés comme des objets, un seul par joueur au début d'un run ----------
+  // power : effet en jeu (voir engine.js) ; model : nœud du fichier companions.glb.
+  pet_ecureuil: {
+    name: 'Écureuil', icon: '🐿️', rarity: 'commun', tier: 1, companion: true, model: 'pet_ecureuil', power: 'useless',
+    desc: 'Totalement inutile. Mais tellement mignon.',
+  },
+  pet_chien: {
+    name: 'Chien fidèle', icon: '🐕', rarity: 'commun', tier: 1, companion: true, model: 'pet_chien', power: 'dig',
+    desc: 'Flaire les trésors : déterre parfois de l’or après une salle, +1 SAG.', bonus: { sag: 1 },
+  },
+  pet_loup: {
+    name: 'Loup gris', icon: '🐺', rarity: 'rare', tier: 1, companion: true, model: 'pet_loup', power: 'bite',
+    desc: 'Mord l’ennemi à chaque tour de combat (1 chance sur 3).',
+  },
+  pet_ours: {
+    name: 'Ours brun', icon: '🐻', rarity: 'epique', tier: 2, companion: true, model: 'pet_ours', power: 'guard',
+    desc: 'Protège son maître : −2 dégâts sur chaque coup reçu, +4 PV.', bonus: { hp: 4 },
+  },
+  pet_dragon: {
+    name: 'Dragonnet', icon: '🐉', rarity: 'legendaire', tier: 3, companion: true, model: 'pet_dragon', power: 'breath',
+    desc: 'Souffle du feu sur chaque ennemi rencontré (2d6 + 2 par niveau).',
+  },
 };
 
 export const MAX_EQUIPPED = 2;
+export const isCompanion = (id) => !!ITEMS[id]?.companion;
 
 export function describeBonus(bonus = {}) {
   const labels = { for: 'FOR', dex: 'DEX', int: 'INT', sag: 'SAG', hp: 'PV', dmg: 'Dégâts' };

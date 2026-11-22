@@ -16,13 +16,13 @@ export const PICK_SECONDS = 25;
 
 // ---------- Personnages ----------
 /** Stats d'un personnage : classe + objets équipés + bonus de niveau (boons) du run. */
-export function computeCharacter(classId, equipped = [], boons = []) {
+export function computeCharacter(classId, equipped = [], boons = [], companion = null) {
   const cls = CLASSES[classId];
   const stats = { ...cls.stats };
   let hp = cls.hp;
   let dmg = cls.dmg;
   let luck = 0;
-  for (const itemId of equipped) {
+  for (const itemId of [...equipped, ...(companion ? [companion] : [])]) {
     const b = ITEMS[itemId]?.bonus || {};
     for (const k of Object.keys(stats)) stats[k] += b[k] || 0;
     hp += b.hp || 0;
@@ -39,7 +39,7 @@ export function computeCharacter(classId, equipped = [], boons = []) {
 
 const charOf = (game, players, uid) => {
   const p = players[uid];
-  return computeCharacter(p.classId, p.equipped || [], Object.values(game.party[uid]?.boons || {}));
+  return computeCharacter(p.classId, p.equipped || [], Object.values(game.party[uid]?.boons || {}), game.party[uid]?.pet || null);
 };
 
 // ---------- Salles ----------
@@ -138,8 +138,9 @@ export function createGame(seed, levelId, players) {
   const party = {};
   for (const [uid, p] of Object.entries(players)) {
     if (!p.classId) continue;
-    const c = computeCharacter(p.classId, p.equipped || []);
-    party[uid] = { hp: c.maxHp, maxHp: c.maxHp, alive: true, skillUsed: false, poison: 0, boons: [] };
+    const pet = ITEMS[p.companion]?.companion ? p.companion : null;
+    const c = computeCharacter(p.classId, p.equipped || [], [], pet);
+    party[uid] = { hp: c.maxHp, maxHp: c.maxHp, alive: true, skillUsed: false, poison: 0, boons: [], pet };
   }
   const rng = new Rng(`${seed}|entrance`);
   return {
@@ -178,6 +179,7 @@ function enterRoom(game, seed) {
   game.enemy = null;
   game.shop = null;
   game.intro = [];
+  game.introPets = [];
   if (room.enemyId) {
     const e = ENEMIES[room.enemyId];
     const n = Object.keys(game.party).length;
@@ -185,6 +187,13 @@ function enterRoom(game, seed) {
     const hp = Math.round(e.hp * level.enemyScale * (1 + 0.5 * (n - 1)) * (elite ? ELITE.hp : 1));
     game.enemy = { id: room.enemyId, hp, maxHp: hp, elite, rage: 0, phase: 1, intent: 'attack' };
     rollIntent(game, rng);
+    for (const uid of petOwners(game, 'breath')) {
+      const dmg = Math.min(game.enemy.hp - 1, rng.dice(2, 6) + 2 * level.id);
+      if (dmg <= 0) continue;
+      game.enemy.hp -= dmg;
+      game.intro.push(`🐉 Le dragonnet crache des flammes sur ${e.name} : −${dmg} PV !`);
+      (game.introPets ||= []).push({ uid, kind: 'breath' });
+    }
     if (room.type === 'boss') {
       const flags = game.flags || {};
       if (flags.allie) {
@@ -204,8 +213,9 @@ function enterRoom(game, seed) {
       const id = rng.pick(ids);
       if (!offers.some((o) => o.id === id)) offers.push({ kind: 'consumable', id, price: CONSUMABLES[id].price });
     }
-    const item = rollLoot(rng, game.levelId, rng.chance(0.3) ? 1 : 0);
-    offers.push({ kind: 'item', id: item, price: ITEM_PRICES[ITEMS[item].rarity] });
+    const pet = rng.chance(0.25);
+    const item = pet ? rollCompanion(rng, game.levelId) : rollLoot(rng, game.levelId, rng.chance(0.3) ? 1 : 0);
+    offers.push({ kind: 'item', id: item, price: Math.round(ITEM_PRICES[ITEMS[item].rarity] * (pet ? 1.3 : 1)) });
     game.shop = offers;
   }
 }
@@ -243,7 +253,7 @@ export function getChoices(game, players) {
     (game.shop || []).forEach((o, i) => {
       if (o.sold) return;
       const def = o.kind === 'item' ? ITEMS[o.id] : CONSUMABLES[o.id];
-      const sub = o.kind === 'item' ? `objet ${RARITY[def.rarity].label.toLowerCase()}, conservé après le run` : def.desc;
+      const sub = o.kind === 'item' ? (def.companion ? `compagnon ${RARITY[def.rarity].label.toLowerCase()} : ${def.desc}` : `objet ${RARITY[def.rarity].label.toLowerCase()}, conservé après le run`) : def.desc;
       choices.push({ id: `buy:${i}`, label: `${def.icon} ${def.name}`, price: o.price, desc: sub, disabled: game.gold < o.price });
     });
     choices.push({ id: 'leave', label: '🚪 Reprendre la route', safe: true });
@@ -417,6 +427,11 @@ function randomAlive(game, rng) {
 function hurt(game, uid, amount, players, lines, source = 'hit') {
   const m = game.party[uid];
   if (!m.alive || amount <= 0) return;
+  if (source === 'hit' && m.pet && ITEMS[m.pet]?.power === 'guard' && amount > 1) {
+    amount = Math.max(1, amount - 2);
+    lines.push(`🐻 L'ours de ${players[uid].name} s'interpose et encaisse une partie du coup.`);
+    (game._pets ||= []).push({ uid, kind: 'guard' });
+  }
   m.hp = Math.max(0, m.hp - amount);
   lines.push(source === 'poison' ? `🤢 ${players[uid].name} souffre du poison (−${amount} PV).` : `💥 ${players[uid].name} perd ${amount} PV.`);
   (source === 'poison' ? (game._poisoned ||= []) : (game._hurt ||= [])).push(uid);
@@ -440,10 +455,43 @@ export function rollLoot(rng, levelId, boost = 0) {
   const order = Object.keys(RARITY);
   if (boost) rarity = order[Math.min(order.length - 1, order.indexOf(rarity) + boost)];
   for (let r = order.indexOf(rarity); r >= 0; r--) {
-    const pool = Object.keys(ITEMS).filter((id) => ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
+    const pool = Object.keys(ITEMS).filter((id) => !ITEMS[id].companion && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
     if (pool.length) return rng.pick(pool);
   }
   return 'dague_rouillee';
+}
+
+/** Tire un compagnon selon la rareté du niveau (les plus rares deviennent possibles aux niveaux avancés). */
+export function rollCompanion(rng, levelId, boost = 0) {
+  const level = getLevel(levelId);
+  const order = Object.keys(RARITY);
+  let rarity = rng.weighted(level.lootTable);
+  if (boost) rarity = order[Math.min(order.length - 1, order.indexOf(rarity) + boost)];
+  for (let r = order.indexOf(rarity); r >= 0; r--) {
+    const pool = Object.keys(ITEMS).filter((id) => ITEMS[id].companion && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
+    if (pool.length) return rng.pick(pool);
+  }
+  return 'pet_ecureuil';
+}
+
+function gainCompanion(game, rng, lines, boost = 0) {
+  const id = rollCompanion(rng, game.levelId, boost);
+  game.loot = [...(game.loot || []), id];
+  lines.push(`🐾 Nouveau compagnon : ${ITEMS[id].icon} ${ITEMS[id].name} (${RARITY[ITEMS[id].rarity].label}) ! Il pourra vous accompagner lors des prochains runs.`);
+}
+
+// ---------- Pouvoirs des compagnons ----------
+const SQUIRREL_LINES = [
+  'regarde fixement un mur pendant dix minutes.',
+  'a volé une noisette. Personne ne sait d\u2019où elle vient.',
+  'a grimpé sur un casque et refuse d\u2019en descendre.',
+  'pousse un petit cri. C\u2019est tout.',
+  'enterre un bouton de chemise. Pour plus tard.',
+];
+
+/** Héros vivants accompagnés d'un compagnon ayant ce pouvoir. */
+function petOwners(game, power) {
+  return Object.entries(game.party).filter(([, m]) => m.alive && m.pet && ITEMS[m.pet]?.power === power).map(([u]) => u);
 }
 
 function gainLoot(game, rng, lines, boost = 0) {
@@ -493,6 +541,7 @@ function applyEffect(game, players, rng, lines, e, actor, level) {
   if (e.flag) game.flags = { ...(game.flags || {}), [e.flag]: true };
   if (e.unflag && game.flags) delete game.flags[e.unflag];
   if (e.reveal) game.revealed = true;
+  if (e.companion) gainCompanion(game, rng, lines, e.companionBoost || 0);
 }
 
 /** L'ennemi agit selon son intention annoncée. */
@@ -666,6 +715,15 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
 
   // Combat : ennemi vaincu, sinon il agit, change de phase et annonce sa prochaine intention
   let enemyAction = null;
+  if (game.enemy && !game.enemy.fled && game.enemy.hp > 0 && fight) {
+    for (const uid of petOwners(game, 'bite')) {
+      if (!rng.chance(1 / 3)) continue;
+      const dmg = rng.int(2, 5) + level.id;
+      game.enemy.hp -= dmg;
+      lines.push(`🐺 Le loup de ${players[uid].name} mord ${ENEMIES[game.enemy.id].name} (−${dmg} PV) !`);
+      (game._pets ||= []).push({ uid, kind: 'bite' });
+    }
+  }
   if (game.enemy && !game.enemy.fled) {
     const e = ENEMIES[game.enemy.id];
     if (game.enemy.hp <= 0) {
@@ -674,8 +732,8 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
       lines.push(`🏆 ${e.name}${elite ? ' (élite)' : ''} est vaincu !`);
       gainGold(game, Math.round(rng.int(e.gold[0], e.gold[1]) * (elite ? ELITE.gold : 1)), lines);
       gainXp(game, e.xp * (elite ? ELITE.xp : 1));
-      if (e.boss) { gainLoot(game, rng, lines, 1); gainLoot(game, rng, lines); }
-      else if (elite) gainLoot(game, rng, lines, ELITE.lootBoost);
+      if (e.boss) { gainLoot(game, rng, lines, 1); gainLoot(game, rng, lines); if (rng.chance(0.35)) gainCompanion(game, rng, lines, 1); }
+      else if (elite) { gainLoot(game, rng, lines, ELITE.lootBoost); if (rng.chance(0.12)) gainCompanion(game, rng, lines); }
       else if (rng.chance(0.4)) gainLoot(game, rng, lines);
       roomDone = true;
     } else if (enemyActs) {
@@ -688,14 +746,26 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
       rollIntent(game, rng);
     }
   }
+  if (roomDone) {
+    for (const uid of petOwners(game, 'dig')) {
+      if (!rng.chance(0.4)) continue;
+      const n = rng.int(3, 10);
+      game.gold = (game.gold || 0) + n;
+      lines.push(`🐕 Le chien de ${players[uid].name} déterre ${n} pièces d'or !`);
+      (game._pets ||= []).push({ uid, kind: 'dig' });
+    }
+    for (const uid of petOwners(game, 'useless')) {
+      if (rng.chance(0.3)) lines.push(`🐿️ L'écureuil de ${players[uid].name} ${rng.pick(SQUIRREL_LINES)}`);
+    }
+  }
   endOfTurn(game, players, lines);
 
   const anyAlive = Object.values(game.party).some((m) => m.alive);
   game.lastResult = {
     label, lines, roll: rollRes, championUid, roomDone, choiceId,
-    hurt: game._hurt || [], poisoned: game._poisoned || [], healed: !!game._healed, enemyAction,
+    hurt: game._hurt || [], poisoned: game._poisoned || [], healed: !!game._healed, enemyAction, pets: game._pets || [],
   };
-  delete game._hurt; delete game._poisoned; delete game._healed;
+  delete game._hurt; delete game._poisoned; delete game._healed; delete game._pets;
   game.phase = 'result';
   game.votes = {};
   if (!anyAlive) game.outcome = 'defeat';
