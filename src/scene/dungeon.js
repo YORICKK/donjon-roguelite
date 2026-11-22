@@ -3,6 +3,7 @@
 // plus tard, les props pourront être remplacés par des modèles GLB faits dans Blender.
 import * as THREE from 'three';
 import { ENEMIES } from '../data/events.js';
+import { loadKit, tintKit, Batch, cloneProp, seeded } from './kit.js';
 
 const SPACING = 20; // distance entre centres de salles
 const WALL_H = 4;
@@ -45,12 +46,115 @@ export function createDungeonScene(canvas) {
   const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.9, ...extra });
 
   function clear() {
-    world.traverse((o) => { o.geometry?.dispose(); if (o.material) [].concat(o.material).forEach((m) => m.dispose()); });
+    world.traverse((o) => {
+      if (o.geometry && !o.geometry.userData.kit) o.geometry.dispose();
+      if (o.material) [].concat(o.material).forEach((m) => { if (!m.userData.kit) m.dispose(); });
+      if (o.isInstancedMesh) o.dispose();
+    });
     world.clear();
     rooms = [];
   }
 
+  // Kit Blender chargé en arrière-plan ; en attendant (ou en cas d'échec) on garde les formes simples.
+  let kit = null;
+  let lastBuild = null;
+  loadKit()
+    .then((k) => { kit = k; if (lastBuild) { const keep = current; build(...lastBuild); jumpTo(keep); } })
+    .catch((e) => console.warn('Kit 3D indisponible, rendu simplifié :', e));
+
+  function jumpTo(i) {
+    if (!rooms[i]) return;
+    current = i;
+    camT = 1;
+    placeCamera(i, camTo);
+    camera.position.copy(camTo);
+    updateLights();
+  }
+
+  // Coque d'une salle (sol, murs, arches, piliers, torches, couloir, décor) avec le kit Blender.
+  function shellKit(g, def, i, W, D, corridorLen, pal) {
+    tintKit(kit, pal);
+    const B = new Batch(kit);
+    const rnd = seeded(i * 7919 + W * 131 + D * 17 + def.shape.torches);
+    const door = 3;
+    for (let x = -W / 2 + 1; x < W / 2; x += 2) {
+      for (let z = -D / 2 + 1; z < D / 2; z += 2) B.add(`floor_${Math.floor(rnd() * 3)}`, [x, 0, z], Math.floor(rnd() * 4) * Math.PI / 2);
+    }
+    const run = (ax, az, bx, bz) => {
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 0.3) return;
+      const n = Math.max(1, Math.round(L / 2));
+      const rot = Math.atan2(-(bz - az), bx - ax);
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n;
+        B.add(`wall_${Math.floor(rnd() * 2)}`, [ax + (bx - ax) * t, 0, az + (bz - az) * t], rot, [L / n / 2, 1, 1]);
+      }
+    };
+    for (const z of [-D / 2, D / 2]) {
+      run(-W / 2, z, -door / 2, z);
+      run(door / 2, z, W / 2, z);
+      B.add('door_arch', [0, 0, z]);
+    }
+    run(-W / 2, D / 2, -W / 2, -D / 2);
+    run(W / 2, D / 2, W / 2, -D / 2);
+    for (let p = 0; p < def.shape.pillars; p++) B.add('pillar', [(p % 2 ? 1 : -1) * (W / 2 - 2), 0, (p < 2 ? -1 : 1) * (D / 2 - 2.5)]);
+
+    if (corridorLen > 0) {
+      const z0 = -D / 2, z1 = -D / 2 - corridorLen;
+      const n = Math.max(1, Math.round(corridorLen / 2));
+      const seg = corridorLen / n;
+      for (let k = 0; k < n; k++) {
+        const z = z0 - seg * (k + 0.5);
+        B.add(`floor_${Math.floor(rnd() * 3)}`, [0, 0, z], 0, [door / 2, 1, seg / 2]);
+        B.add('ceiling', [0, WALL_H - 0.3, z], 0, [(door + 1.2) / 2, 1, seg / 2]);
+      }
+      run(-door / 2 - 0.3, z0, -door / 2 - 0.3, z1);
+      run(door / 2 + 0.3, z0, door / 2 + 0.3, z1);
+    }
+    B.flush(g);
+
+    // Torches murales avec flamme
+    const flameMat = new THREE.MeshBasicMaterial({ color: pal.torch });
+    const flameGeo = new THREE.ConeGeometry(0.09, 0.28, 5);
+    for (let t = 0; t < def.shape.torches; t++) {
+      const left = t % 2 === 0;
+      const torch = cloneProp(kit, 'torch');
+      torch.position.set(left ? -W / 2 + 0.3 : W / 2 - 0.3, 2.1, -D / 2 + ((t >> 1) + 1) * (D / 3));
+      torch.rotation.y = left ? -Math.PI / 2 : Math.PI / 2;
+      const flame = new THREE.Mesh(flameGeo, flameMat);
+      flame.position.set(0, 0.72, -0.36);
+      flame.userData.flame = true;
+      torch.add(flame);
+      g.add(torch);
+    }
+
+    // Décor aléatoire dans les coins (le centre reste libre pour l'événement)
+    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+    for (const [sx, sz] of corners) {
+      if (rnd() < 0.35) continue;
+      const name = ['barrel', 'crate', 'bones', 'rubble', 'barrel'][Math.floor(rnd() * 5)];
+      const p = cloneProp(kit, name);
+      p.position.set(sx * (W / 2 - 1.1 - rnd() * 0.5), 0, sz * (D / 2 - 1.4 - rnd() * 0.6));
+      p.rotation.y = rnd() * Math.PI * 2;
+      g.add(p);
+      if (name === 'crate' && rnd() < 0.5) {
+        const top = cloneProp(kit, 'crate');
+        top.position.copy(p.position).setY(0.8);
+        top.rotation.y = rnd() * Math.PI;
+        top.scale.setScalar(0.8);
+        g.add(top);
+      }
+    }
+    for (const sx of [-1, 1]) {
+      if (rnd() < 0.5) continue;
+      const b = cloneProp(kit, 'banner');
+      b.position.set(sx * Math.min(W / 2 - 1, 3), 3.5, -D / 2 + 0.36);
+      g.add(b);
+    }
+  }
+
   function build(roomDefs, level) {
+    lastBuild = [roomDefs, level];
     clear();
     const pal = level.palette;
     scene.background = new THREE.Color(pal.fog);
@@ -67,6 +171,10 @@ export function createDungeonScene(canvas) {
       const W = isBoss ? w + 4 : w;
       const D = isBoss ? d + 3 : d;
 
+      const nextDef = roomDefs[i + 1];
+      const nextD = nextDef ? (nextDef.type === 'boss' ? nextDef.shape.d + 3 : nextDef.shape.d) : 0;
+      if (kit) shellKit(g, def, i, W, D, nextDef ? SPACING - D / 2 - nextD / 2 : 0, pal);
+      else {
       // Sol en dalles légèrement irrégulières
       const tiles = new THREE.Group();
       for (let x = -W / 2 + 1; x < W / 2; x += 2) {
@@ -110,13 +218,9 @@ export function createDungeonScene(canvas) {
         fl.position.set(left ? -W / 2 + 0.45 : W / 2 - 0.45, 2.4, -D / 2 + ((t >> 1) + 1) * (D / 3));
         g.add(fl);
       }
-      const light = new THREE.PointLight(pal.torch, 0, 22, 1.4);
-      light.position.set(0, 3.2, 0);
-      g.add(light);
 
       // Couloir vers la salle suivante
       if (i < roomDefs.length - 1) {
-        const nextD = roomDefs[i + 1].type === 'boss' ? roomDefs[i + 1].shape.d + 3 : roomDefs[i + 1].shape.d;
         const len = SPACING - D / 2 - nextD / 2;
         const cz = -D / 2 - len / 2;
         const floor = new THREE.Mesh(new THREE.BoxGeometry(door, 0.2, len), floorMat);
@@ -131,8 +235,13 @@ export function createDungeonScene(canvas) {
         ceil.position.set(0, WALL_H - 0.4, cz);
         g.add(ceil);
       }
+      } // fin du rendu sans kit
 
-      const props = buildProps(def, mat);
+      const light = new THREE.PointLight(pal.torch, 0, 22, 1.4);
+      light.position.set(0, 3.2, 0);
+      g.add(light);
+
+      const props = buildProps(def, mat, kit);
       g.add(props.group);
       world.add(g);
       rooms.push({ def, group: g, light, props, D });
@@ -219,9 +328,57 @@ export function createDungeonScene(canvas) {
 }
 
 // ---------- Props ----------
-function buildProps(def, mat) {
+function buildProps(def, mat, kit) {
   const group = new THREE.Group();
   const props = { group, type: def.type };
+  if (kit) {
+    if (def.type === 'chest') {
+      const body = cloneProp(kit, 'chest_body');
+      body.position.set(0, 0, -2);
+      const lidPivot = new THREE.Group();
+      lidPivot.position.set(0, 0.7, -2 - 0.425);
+      lidPivot.add(cloneProp(kit, 'chest_lid'));
+      const glow = new THREE.PointLight(0xffd36b, 0, 5);
+      glow.position.set(0, 1.2, -2);
+      group.add(body, lidPivot, glow);
+      Object.assign(props, { lid: lidPivot, glow });
+      def = { ...def, type: 'kit-done' };
+    } else if (def.type === 'shrine') {
+      const altar = cloneProp(kit, 'altar');
+      altar.position.set(0, 0, -2.2);
+      const gem = cloneProp(kit, 'gem');
+      gem.position.set(0, 1.9, -2.2);
+      const l = new THREE.PointLight(0x66ffee, 6, 6);
+      l.position.set(0, 1.9, -2.2);
+      group.add(altar, gem, l);
+      Object.assign(props, { gem, gemY: 1.9 });
+      def = { ...def, type: 'kit-done' };
+    } else if (def.type === 'rest') {
+      const camp = cloneProp(kit, 'campfire');
+      camp.position.set(0, 0, -1.8);
+      const fire = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 5), new THREE.MeshBasicMaterial({ color: 0xff7722 }));
+      fire.position.set(0, 0.5, -1.8);
+      const fl = new THREE.PointLight(0xff8833, 8, 8);
+      fl.position.set(0, 1, -1.8);
+      group.add(camp, fire, fl);
+      Object.assign(props, { fire, fireLight: fl });
+      def = { ...def, type: 'kit-done' };
+    } else if (def.type === 'npc') {
+      const barrel = cloneProp(kit, 'barrel');
+      barrel.position.set(-0.6, 0, -1.9);
+      const crate = cloneProp(kit, 'crate');
+      crate.position.set(-0.4, 0, -2.8);
+      crate.rotation.y = 0.4;
+      group.add(barrel, crate);
+    } else if (def.type === 'trap') {
+      const rubble = cloneProp(kit, 'rubble');
+      rubble.position.set(2.2, 0, -0.5);
+      const bones = cloneProp(kit, 'bones');
+      bones.position.set(-1.2, 0, -0.3);
+      bones.rotation.y = 2;
+      group.add(rubble, bones);
+    }
+  }
   if (def.enemyId) {
     const e = ENEMIES[def.enemyId];
     const enemy = buildEnemy(e, mat);
@@ -261,7 +418,7 @@ function buildProps(def, mat) {
         group.add(s);
       }
     }
-    props.spikes = group.children.slice();
+    props.spikes = group.children.filter((c) => c.isMesh && c.geometry.type === 'ConeGeometry');
   }
   if (def.type === 'shrine') {
     const base = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.9, 1, 6), mat(0x888899));
@@ -280,9 +437,12 @@ function buildProps(def, mat) {
     head.position.set(0.5, 1.7, -1.8);
     const hat = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.5, 6), mat(0x3e2f6b));
     hat.position.set(0.5, 2.05, -1.8);
-    const bag = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), mat(0x8b6a3e));
-    bag.position.set(-0.4, 0.25, -1.6);
-    group.add(robe, head, hat, bag);
+    group.add(robe, head, hat);
+    if (!kit) {
+      const bag = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.4), mat(0x8b6a3e));
+      bag.position.set(-0.4, 0.25, -1.6);
+      group.add(bag);
+    }
     props.npc = head;
   }
   if (def.type === 'rest') {
@@ -374,7 +534,7 @@ function animateProps(p, t, dt) {
     p.lid.rotation.x = THREE.MathUtils.lerp(p.lid.rotation.x, p.chestOpen ? -1.9 : 0, dt * 4);
     p.glow.intensity = THREE.MathUtils.lerp(p.glow.intensity, p.chestOpen ? 8 : 0, dt * 3);
   }
-  if (p.gem) { p.gem.rotation.y += dt; p.gem.position.y = 1.7 + Math.sin(t * 2) * 0.1; }
+  if (p.gem) { p.gem.rotation.y += dt; p.gem.position.y = (p.gemY || 1.7) + Math.sin(t * 2) * 0.1; }
   if (p.npc) p.npc.rotation.y = Math.sin(t) * 0.4;
   if (p.fire) { p.fire.scale.y = 1 + Math.sin(t * 13) * 0.15; p.fireLight.intensity = 7 + Math.sin(t * 17) * 1.5; }
   if (p.portal) p.portal.rotation.z += dt * 0.6;
