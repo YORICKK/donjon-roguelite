@@ -16,6 +16,7 @@ const RESULT_AUTO_MS = 9000;
 const ui = document.getElementById('ui');
 const scene = createDungeonScene(document.getElementById('scene'));
 scene.build(generateDungeon('menu', 1), getLevel(1));
+if (import.meta.env.DEV) window.__scene = scene; // débogage uniquement (absent du build)
 
 const app = {
   screen: 'name', // name | menu | inventory | lobby

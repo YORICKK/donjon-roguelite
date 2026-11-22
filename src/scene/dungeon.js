@@ -381,9 +381,12 @@ function buildProps(def, mat, kit) {
   }
   if (def.enemyId) {
     const e = ENEMIES[def.enemyId];
-    const enemy = buildEnemy(e, mat);
-    enemy.position.set(0, 0, e.boss ? -3.5 : -2.5);
-    if (e.boss) enemy.scale.setScalar(1.6);
+    const model = kit?.pieces[`enemy_${def.enemyId}`];
+    // Modèles Blender à l'échelle réelle ; seuls le rat (géant) est agrandi.
+    const enemy = model ? model.clone(true) : buildEnemy(e, mat);
+    enemy.position.set(0, 0, e.boss ? (model ? -1.2 : -3.5) : -2.2);
+    if (model) enemy.scale.setScalar(def.enemyId === 'rat_geant' ? 1.4 : e.boss ? 1.3 : 1);
+    else if (e.boss) enemy.scale.setScalar(1.6);
     group.add(enemy);
     props.enemy = enemy;
     props.baseScale = enemy.scale.x;
@@ -430,7 +433,12 @@ function buildProps(def, mat, kit) {
     group.add(base, gem, l);
     props.gem = gem;
   }
-  if (def.type === 'npc') {
+  if (def.type === 'npc' && kit?.pieces.npc_marchand) {
+    const npc = cloneProp(kit, 'npc_marchand');
+    npc.position.set(0.6, 0, -1.9);
+    group.add(npc);
+    props.npc = npc;
+  } else if (def.type === 'npc') {
     const robe = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.5, 6), mat(0x5d4e8c));
     robe.position.set(0.5, 0.75, -1.8);
     const head = new THREE.Mesh(new THREE.IcosahedronGeometry(0.25, 0), mat(0xe0b48a));

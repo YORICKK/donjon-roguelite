@@ -7,23 +7,34 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-export async function loadKit(url = `${import.meta.env.BASE_URL}models/dungeon_kit.glb`) {
-  const gltf = await new GLTFLoader().loadAsync(url);
+// enemies.glb : enemy_<id> pour chaque ennemi de data/events.js (face vers +Z, pieds à y=0), npc_marchand.
+const MODEL_FILES = ['dungeon_kit.glb', 'enemies.glb'];
+
+export async function loadKit(files = MODEL_FILES) {
+  const loader = new GLTFLoader();
+  const gltfs = await Promise.all(files.map((f) => loader.loadAsync(`${import.meta.env.BASE_URL}models/${f}`)));
   const pieces = {};
   const materials = {};
-  for (const node of [...gltf.scene.children]) {
-    node.position.set(0, 0, 0);
-    node.updateMatrixWorld(true);
-    pieces[node.name] = node;
+  for (const gltf of gltfs) {
+    for (const node of [...gltf.scene.children]) {
+      node.position.set(0, 0, 0);
+      node.updateMatrixWorld(true);
+      pieces[node.name] = node;
+    }
+    gltf.scene.traverse((o) => {
+      if (!o.isMesh) return;
+      o.geometry.userData.kit = true;
+      o.material.userData.kit = true;
+      // Sans carte d'environnement, un métal pur paraît noir : on garde un éclat discret.
+      o.material.metalness = Math.min(o.material.metalness, 0.3);
+      if (o.material.name === 'M_Ghost') {
+        o.material.transparent = true;
+        o.material.opacity = 0.7;
+        o.material.depthWrite = false;
+      }
+      materials[o.material.name] = o.material;
+    });
   }
-  gltf.scene.traverse((o) => {
-    if (!o.isMesh) return;
-    o.geometry.userData.kit = true;
-    o.material.userData.kit = true;
-    // Sans carte d'environnement, un métal pur paraît noir : on garde un éclat discret.
-    o.material.metalness = Math.min(o.material.metalness, 0.3);
-    materials[o.material.name] = o.material;
-  });
   return { pieces, materials };
 }
 
