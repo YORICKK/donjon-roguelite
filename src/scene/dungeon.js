@@ -197,7 +197,11 @@ export function createDungeonScene(canvas) {
         pobj.rotation.y = obj.rotation.y;
         pobj.scale.setScalar({ useless: 1.8, guard: 0.8 }[petDef.power] || 1);
         partyGroup.add(pobj);
-        pet = { obj: pobj, anim: new Animator(pobj), power: petDef.power, baseY: petDef.power === 'breath' ? 0.55 : 0, sparkle: petDef.look?.sparkle, sparkleT: Math.random() };
+        pet = {
+          obj: pobj, anim: new Animator(pobj), power: petDef.power, sparkle: petDef.look?.sparkle, sparkleT: Math.random(),
+          // le dragonnet alterne vol et sol
+          flyer: petDef.power === 'breath', mode: 'ground', modeT: 3 + Math.random() * 4, curY: 0,
+        };
       }
       heroes.push({ ...m, obj, lunge: 0, anim, pet });
     });
@@ -212,13 +216,26 @@ export function createDungeonScene(canvas) {
     heroes.forEach((h, i) => {
       const o = h.obj;
       if (h.pet) {
-        h.pet.anim.setBase(walking ? 'walk' : 'idle');
-        h.pet.anim.update(dt);
-        if (h.pet.baseY) h.pet.obj.position.y = h.pet.baseY + Math.sin(t * 2.2 + i) * 0.12;
+        const pt = h.pet;
+        if (pt.flyer) {
+          // alterne entre vol et sol toutes les 5 à 11 s (poussière au décollage et à l'atterrissage)
+          if ((pt.modeT -= dt) <= 0) {
+            pt.mode = pt.mode === 'air' ? 'ground' : 'air';
+            pt.modeT = 5 + Math.random() * 6;
+            fx.burst(worldPos(pt.obj, 0.05), 0xb8a68a, { count: 18, speed: 1.6, up: 0.6, gravity: -1, life: 0.8, size: 0.16 });
+          }
+          const air = pt.mode === 'air';
+          pt.curY = THREE.MathUtils.lerp(pt.curY, air ? 1.0 : 0, dt * 1.8);
+          pt.obj.position.y = pt.curY + (air ? Math.sin(t * 2.4 + i) * 0.12 : 0);
+          pt.anim.setBase(pt.curY > 0.25 ? 'fly' : walking ? 'walk' : 'idle');
+        } else {
+          pt.anim.setBase(walking ? 'walk' : 'idle');
+        }
+        pt.anim.update(dt);
         // variante chromatique : étincelles en continu
         if (h.pet.sparkle && (h.pet.sparkleT -= dt) <= 0) {
           h.pet.sparkleT = 0.35 + Math.random() * 0.3;
-          const p = worldPos(h.pet.obj, h.pet.baseY + 0.25 + Math.random() * 0.4).add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 0, (Math.random() - 0.5) * 0.6));
+          const p = worldPos(h.pet.obj, h.pet.curY + 0.25 + Math.random() * 0.4).add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 0, (Math.random() - 0.5) * 0.6));
           fx.burst(p, h.pet.sparkle, { count: 3, speed: 0.4, up: 2, gravity: 0.6, life: 0.9, size: 0.09 });
         }
       }
@@ -343,7 +360,7 @@ export function createDungeonScene(canvas) {
       if (!h?.pet) return;
       later(delay + k * 250, () => {
         h.pet.anim.play('attack');
-        const at = worldPos(h.pet.obj, h.pet.baseY + 0.4);
+        const at = worldPos(h.pet.obj, h.pet.curY + 0.4);
         if (kind === 'breath' && enemy) {
           fx.projectile(at, worldPos(enemy, 1.2), 0xff5a1a, { duration: 0.45, size: 0.3 });
           later(450, () => { shakeHit(0.2); setRoomState({ enemyHpFrac: rooms[current]?.props.hpFrac }); });
@@ -760,6 +777,7 @@ export function createDungeonScene(canvas) {
   return {
     build, goToRoom, jumpTo, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset, playResult, cheer, playPets,
     get current() { return current; },
+    get three() { return scene; }, // débogage
     /** Diagnostic de performance (appels de dessin, triangles, lumières, shaders). */
     stats() {
       let lights = 0;
