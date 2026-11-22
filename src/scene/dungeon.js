@@ -227,6 +227,12 @@ export function createDungeonScene(canvas) {
     } else if (r.success || !hero) {
       later(t, () => flash(0xffdd66));
     }
+    if (r.poisoned?.length) later(t + 700, () => {
+      for (const uid of r.poisoned) {
+        const h = heroes.find((x) => x.uid === uid);
+        if (h) fx.burst(worldPos(h.obj, 1.0), 0x7ccf5a, { count: 16, speed: 1, up: 2, gravity: 1, life: 0.9, size: 0.14 });
+      }
+    });
     if (r.chestOpen) later(t + 200, () => {
       setRoomState({ chestOpen: true });
       const c = rooms[current]?.props.lid;
@@ -529,7 +535,7 @@ export function createDungeonScene(canvas) {
   requestAnimationFrame(tick);
 
   return {
-    build, goToRoom, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset, playResult, cheer,
+    build, goToRoom, jumpTo, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset, playResult, cheer,
     get current() { return current; },
     dispose() { running = false; clear(); renderer.dispose(); window.removeEventListener('resize', resize); },
   };
@@ -571,6 +577,18 @@ function buildProps(def, mat, kit) {
       group.add(camp, fire, fl);
       Object.assign(props, { fire, fireLight: fl });
       def = { ...def, type: 'kit-done' };
+    } else if (def.type === 'shop') {
+      const stall = [['crate', -1.4, -2.4, 0.3], ['crate', 1.5, -2.3, -0.4], ['barrel', -0.9, -3.1, 0], ['barrel', 1.0, -3.2, 0], ['chest_body', 0, -3.2, 0]];
+      for (const [name, x, z, ry] of stall) {
+        const p = cloneProp(kit, name);
+        p.position.set(x, 0, z);
+        p.rotation.y = ry;
+        group.add(p);
+      }
+      const glow = new THREE.PointLight(0xffc870, 8, 7);
+      glow.position.set(0, 2, -2);
+      group.add(glow);
+      def = { ...def, type: 'npc', shop: true };
     } else if (def.type === 'npc') {
       const barrel = cloneProp(kit, 'barrel');
       barrel.position.set(-0.6, 0, -1.9);
@@ -593,7 +611,12 @@ function buildProps(def, mat, kit) {
     // Modèles Blender à l'échelle réelle ; seuls le rat (géant) est agrandi.
     const enemy = model ? model.clone(true) : buildEnemy(e, mat);
     enemy.position.set(0, 0, e.boss ? (model ? -1.2 : -3.5) : -2.2);
-    if (model) enemy.scale.setScalar({ rat_geant: 1.3, chef_gobelin: 1.15 }[def.enemyId] || 1);
+    if (model) enemy.scale.setScalar(({ rat_geant: 1.3, chef_gobelin: 1.15 }[def.enemyId] || 1) * (def.type === 'elite' ? 1.18 : 1));
+    if (def.type === 'elite') {
+      const aura = new THREE.PointLight(0xff3020, 10, 5);
+      aura.position.set(0, 1.2, enemy.position.z + 0.6);
+      group.add(aura);
+    }
     else if (e.boss) enemy.scale.setScalar(1.6);
     group.add(enemy);
     enemy.traverse((o) => { if (o.isMesh) o.castShadow = true; });

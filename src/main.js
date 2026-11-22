@@ -3,7 +3,8 @@ import { MAX_EQUIPPED } from './data/items.js';
 import { LEVELS, getLevel } from './data/levels.js';
 import { Rng, randomSeed } from './core/rng.js';
 import {
-  createGame, generateDungeon, getChoices, tallyVotes, votersFor, resolveChoice, advance, keptLoot, VOTE_SECONDS,
+  createGame, generateDungeon, getChoices, tallyVotes, votersFor, resolveChoice, advance, finishLevelUp, keptLoot,
+  VOTE_SECONDS, PICK_SECONDS,
 } from './core/engine.js';
 import { profiles, multiLobbies, soloLobbies, makeCode, emptyProfile } from './net/index.js';
 import { createDungeonScene } from './scene/dungeon.js';
@@ -108,7 +109,8 @@ function reactScene(g) {
     enemyDied: !!(g.enemy && g.enemy.hp <= 0 && !g.enemy.fled),
     enemyHpFrac: g.enemy ? g.enemy.hp / g.enemy.maxHp : null,
     hurt,
-    healed: r.lines.some((l) => l.startsWith('💚')),
+    poisoned: r.poisoned || [],
+    healed: !!r.healed || r.lines.some((l) => l.startsWith('💚')),
     chestOpen: room.type === 'chest' && r.lines.some((l) => l.startsWith('🎁')),
   });
   if (g.outcome === 'victory') setTimeout(() => scene.cheer(), 2200);
@@ -118,10 +120,10 @@ function tickCountdown() {
   const g = app.lobby?.game;
   const el = ui.querySelector('[data-countdown]');
   const bar = ui.querySelector('[data-timerbar]');
-  if (!el || !g || g.phase !== 'vote') return;
+  if (!el || !g || !['vote', 'path', 'levelup'].includes(g.phase)) return;
   const left = Math.max(0, (g.deadline - Date.now()) / 1000);
   el.textContent = `⏳ ${Math.ceil(left)} s`;
-  bar.style.width = `${(100 * left) / VOTE_SECONDS}%`;
+  bar.style.width = `${(100 * left) / (g.phase === 'levelup' ? PICK_SECONDS : VOTE_SECONDS)}%`;
   bar.parentElement.classList.toggle('urgent', left < 8);
 }
 setInterval(tickCountdown, 250);
@@ -141,11 +143,16 @@ function syncScene() {
   const L = app.lobby;
   if (L?.status === 'playing' && L.game) {
     const g = L.game;
-    if (app.builtSeed !== L.seed) {
+    const key = `${L.seed}|${g.rooms.length}`;
+    if (app.builtSeed !== key) {
+      const sameRun = app.builtSeed?.startsWith(`${L.seed}|`);
       scene.build(g.rooms, getLevel(g.levelId));
-      app.builtSeed = L.seed;
+      // Nouvelle salle ajoutée : on repart de la précédente pour marcher jusqu'à elle
+      if (sameRun) scene.jumpTo(Math.max(0, g.roomIndex - 1));
+      app.builtSeed = key;
     }
     scene.goToRoom(g.roomIndex);
+    if (g.phase === 'levelup' && app.levelFx !== g.plevel) { app.levelFx = g.plevel; scene.cheer(); }
     scene.setParty(Object.entries(g.party).map(([uid, m]) => ({ uid, classId: L.players?.[uid]?.classId, alive: m.alive })));
     if (g.phase === 'vote' && g.enemy) scene.setRoomState({ enemyHpFrac: g.enemy.hp / g.enemy.maxHp });
   } else {
@@ -187,9 +194,14 @@ function normalize(L) {
     L.game.loot = L.game.loot ? Object.values(L.game.loot) : [];
     L.game.rooms = Object.values(L.game.rooms || {});
     L.game.enemy = L.game.enemy || null;
+    L.game.bag = L.game.bag || {};
+    L.game.offers = L.game.offers || {};
+    L.game.picks = L.game.picks || {};
+    if (L.game.shop) L.game.shop = Object.values(L.game.shop);
     if (L.game.lastResult) {
       L.game.lastResult.lines = Object.values(L.game.lastResult.lines || {});
       L.game.lastResult.hurt = Object.values(L.game.lastResult.hurt || {});
+      L.game.lastResult.poisoned = Object.values(L.game.lastResult.poisoned || {});
     }
   }
   for (const p of Object.values(L.players || {})) p.equipped = p.equipped ? Object.values(p.equipped) : [];
@@ -244,7 +256,12 @@ setInterval(async () => {
   const key = `${L.seed}|${g.roomIndex}|${g.round}|${g.phase}`;
   if (resolving === key) return;
   const players = L.players || {};
-  if (g.phase === 'vote') {
+  if (g.phase === 'levelup') {
+    const pickers = Object.keys(g.offers || {}).filter((u) => g.party[u]?.alive && players[u]?.online !== false);
+    if (!pickers.every((u) => g.picks?.[u]) && Date.now() < g.deadline) return;
+    resolving = key;
+    await upd({ game: finishLevelUp(g, L.seed) });
+  } else if (g.phase === 'vote' || g.phase === 'path') {
     const voters = votersFor(g, players);
     const allVoted = voters.length > 0 && voters.every((u) => g.votes[u]);
     if (!allVoted && Date.now() < g.deadline) return;
@@ -263,7 +280,7 @@ setInterval(async () => {
 }, 400);
 
 async function doContinue() {
-  const next = advance(app.lobby.game);
+  const next = advance(app.lobby.game, app.lobby.seed);
   const patch = { game: next };
   if (next.phase === 'over') patch.lastOutcome = next.outcome;
   await upd(patch);
@@ -329,6 +346,10 @@ const actions = {
     const seed = L.seed || randomSeed();
     const players = Object.fromEntries(Object.entries(L.players || {}).filter(([, p]) => p.online !== false && p.classId));
     upd({ status: 'playing', seed, game: createGame(seed, L.levelId || 1, players) });
+  },
+  pick(el) {
+    buzz(15);
+    upd({ [`game/picks/${app.uid}`]: el.dataset.id });
   },
   vote(el) {
     buzz(15);

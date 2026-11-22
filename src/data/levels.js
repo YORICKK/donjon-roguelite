@@ -27,4 +27,8 @@ export const LEVELS = [
   },
 ];
 
+// Carte : `rooms` étages avant le boss, 2 à 3 portes par étage. Les poids `weights` décident
+// du type de chaque porte ; élite, marchand et inconnu sont ajoutés à partir du 2e étage.
+export const MAP_EXTRA_WEIGHTS = { elite: 1, shop: 1, unknown: 1.5 };
+
 export const getLevel = (id) => LEVELS.find((l) => l.id === id) || LEVELS[0];

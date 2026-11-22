@@ -2,13 +2,14 @@
 import { CLASSES, STAT_LABELS } from '../data/classes.js';
 import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus } from '../data/items.js';
 import { LEVELS, getLevel } from '../data/levels.js';
-import { ENEMIES, ROOM_TYPE_LABELS } from '../data/events.js';
-import { computeCharacter, getChoices, getEvent, votersFor, previewChoice, keptLoot } from '../core/engine.js';
+import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
+import { NODE_TYPES, CONSUMABLES, BOONS, XP_LEVELS, STATUS, ELITE } from '../data/run.js';
+import { computeCharacter, getChoices, getEvent, votersFor, previewChoice, keptLoot, nextNodes } from '../core/engine.js';
 import { online } from '../net/index.js';
 import { esc, fmtMod } from './dom.js';
 
 const BASE = import.meta.env.BASE_URL;
-export const ROOM_ICONS = { combat: '⚔️', trap: '🪤', chest: '🧰', shrine: '⛩️', npc: '🧙', rest: '🔥', boss: '💀' };
+export const ROOM_ICONS = { combat: '⚔️', trap: '🪤', chest: '🧰', shrine: '⛩️', npc: '🧙', rest: '🔥', boss: '💀', elite: '💀', shop: '🛒', entrance: '🚪' };
 
 export const portraitUrl = (classId) => `${BASE}portraits/${classId}.png`;
 const portrait = (classId, cls = '') =>
@@ -161,6 +162,27 @@ export function renderLobby(app, L) {
 }
 
 // ---------- Partie ----------
+function intentLine(g, level) {
+  const e = ENEMIES[g.enemy.id];
+  const it = INTENTS[g.enemy.intent] || INTENTS.attack;
+  const max = Math.round(e.dmg * level.enemyScale * (g.enemy.elite ? ELITE.dmg : 1) + (g.enemy.rage || 0));
+  const dmgTxt = g.enemy.intent === 'heavy' ? ` · ~${Math.round(max * 1.3)} dégâts, même si vous réussissez` :
+    g.enemy.intent === 'attack' ? ` · jusqu'à ${max} dégâts si vous échouez` :
+    g.enemy.intent === 'poison' ? ' · empoisonne si vous échouez' : '';
+  const hint = g.enemy.intent === 'heavy' ? ' — levez la garde !' : g.enemy.intent === 'defend' ? ' — bon moment pour se soigner' : '';
+  return `<div class="intent intent-${g.enemy.intent}"><span class="ico">${it.icon}</span><span><b>Intention : ${it.label}</b>${dmgTxt}${hint}</span></div>`;
+}
+
+function renderMap(g) {
+  const reachable = new Set(nextNodes(g).map((n) => n.id));
+  const visited = new Set(g.rooms.map((r) => r.nodeId).filter(Boolean));
+  const floors = Object.values(g.map.floors);
+  return `<div class="map">${floors.map((f) => `<div class="map-floor">${Object.values(f).map((n) => {
+    const cls = n.id === g.nodeId ? 'cur' : visited.has(n.id) ? 'done' : reachable.has(n.id) ? 'next' : '';
+    return `<span class="map-node ${cls}" title="${esc(NODE_TYPES[n.type].label)}">${NODE_TYPES[n.type].icon}</span>`;
+  }).join('')}</div>`).join('<span class="map-link">›</span>')}</div>`;
+}
+
 export function renderGame(app, L) {
   const g = L.game;
   const players = L.players || {};
@@ -168,45 +190,63 @@ export function renderGame(app, L) {
   const level = getLevel(g.levelId);
   const isHost = L.hostUid === app.uid;
   const votes = g.votes || {};
-  const voting = g.phase === 'vote';
+  const voting = g.phase === 'vote' || g.phase === 'path';
+  const picking = g.phase === 'levelup';
 
   const partyHtml = Object.entries(party).map(([uid, m]) => {
     const p = players[uid] || {};
     const c = CLASSES[p.classId] || {};
-    const voted = voting && m.alive && votes[uid];
+    const done = (voting && votes[uid]) || (picking && g.picks?.[uid]);
+    const boons = Object.values(m.boons || {}).map((b) => BOONS[b]?.icon).join('');
     return `<div class="member ${m.alive ? '' : 'dead'} ${uid === app.uid ? 'me' : ''}">
       ${portrait(p.classId)}
       <div class="info">
         <div class="nm">${esc(p.name)}${m.skillUsed ? '' : ' <span title="Compétence disponible">★</span>'}</div>
-        <div class="sub"><span class="cls">${c.name || ''}</span><span>${m.alive ? `${m.hp}/${m.maxHp}` : '☠️'}</span>${p.online === false ? '<span>📴</span>' : ''}</div>
+        <div class="sub"><span class="cls">${c.name || ''}</span><span>${m.alive ? `${m.hp}/${m.maxHp}` : '☠️'}</span>
+          ${m.poison ? `<span title="Empoisonné">${STATUS.poison.icon}</span>` : ''}${g.blessed > 0 && m.alive ? `<span title="Béni">${STATUS.blessed.icon}</span>` : ''}
+          ${boons ? `<span class="boons" title="Bonus de niveau">${boons}</span>` : ''}${p.online === false ? '<span>📴</span>' : ''}</div>
         <div class="hp ${hpClass(m.hp, m.maxHp)}"><div style="width:${(100 * m.hp) / m.maxHp}%"></div></div>
       </div>
-      ${voting && m.alive ? `<span class="tag ${voted ? '' : 'wait'}">${voted ? '✓' : '…'}</span>` : ''}
+      ${(voting || picking) && m.alive ? `<span class="tag ${done ? '' : 'wait'}">${done ? '✓' : '…'}</span>` : ''}
     </div>`;
   }).join('');
 
-  const track = g.rooms.map((r, i) => {
-    const cls = i < g.roomIndex ? 'done' : i === g.roomIndex ? 'cur' : '';
-    const icon = i <= g.roomIndex ? ROOM_ICONS[r.type] : i === g.rooms.length - 1 ? '💀' : '·';
-    return `<span class="${cls}">${icon}</span>`;
-  }).join('');
+  const floors = Object.values(g.map.floors).length;
+  const floorNow = g.nodeId ? Number(g.nodeId.split('-')[0]) + 1 : 0;
+  const nextXp = XP_LEVELS[g.plevel] ?? null;
+  const prevXp = XP_LEVELS[g.plevel - 1] ?? 0;
+  const xpPct = nextXp ? Math.min(100, ((g.xp - prevXp) / (nextXp - prevXp)) * 100) : 100;
+  const bag = Object.entries(g.bag || {}).filter(([, n]) => n > 0).map(([id, n]) => `<span title="${esc(CONSUMABLES[id].name)}">${CONSUMABLES[id].icon}${n > 1 ? `<sub>${n}</sub>` : ''}</span>`).join('');
 
   let body;
   if (g.phase === 'over') body = renderOver(app, L);
-  else {
-    const room = g.rooms[g.roomIndex];
-    const ev = getEvent(room);
-    const enemy = g.enemy ? ENEMIES[g.enemy.id] : null;
-    const title = enemy ? enemy.name : ev.title;
-    const text = enemy
-      ? (enemy.boss ? (g.round ? 'Le gardien vacille… ou pas.' : 'Le gardien du donjon se dresse devant vous. Aucune fuite possible.') : g.round ? 'Le combat continue !' : `Un ${enemy.name.toLowerCase()} vous barre la route.`)
-      : ev.text;
+  else if (g.phase === 'path') {
     body = `
-      <div class="kicker"><span class="ico">${ROOM_ICONS[room.type]}</span> Salle ${g.roomIndex + 1}/${g.rooms.length} · ${ROOM_TYPE_LABELS[room.type]}</div>
-      <h2>${esc(title)}</h2>
+      <div class="kicker"><span class="ico">🧭</span> Étage ${floorNow + 1}/${floors}</div>
+      <h2>${floorNow === 0 ? 'L’entrée du donjon' : 'Le couloir se divise'}</h2>
+      ${renderMap(g)}
+      <p class="story">${floorNow === 0 ? 'Deux passages s’enfoncent dans l’obscurité. Par où commencer ?' : 'Plusieurs portes s’offrent à vous. Chaque choix ferme les autres chemins.'}</p>
+      ${renderVote(app, L)}`;
+  } else if (g.phase === 'levelup') {
+    body = renderLevelUp(app, L);
+  } else {
+    const room = g.rooms[g.roomIndex];
+    const enemy = g.enemy ? ENEMIES[g.enemy.id] : null;
+    const shop = room.type === 'shop';
+    const ev = getEvent(room);
+    const title = shop ? 'Le marchand ambulant' : enemy ? `${enemy.name}${g.enemy.elite ? ' <span class="chip bad">ÉLITE</span>' : ''}${g.enemy.phase === 2 ? ' <span class="chip bad">FURIEUX</span>' : ''}` : esc(ev.title);
+    const text = shop ? '« Des potions, des bombes, des babioles… Tout a un prix, mais tout peut sauver une vie. »'
+      : enemy ? (enemy.boss ? (g.round ? 'Le gardien vacille… ou pas.' : 'Le gardien du donjon se dresse devant vous. Aucune fuite possible.') : g.round ? 'Le combat continue !' : `Un ${enemy.name.toLowerCase()}${g.enemy.elite ? ' d’élite' : ''} vous barre la route.`)
+      : ev.text;
+    const icon = room.hidden ? '❓' : NODE_TYPES[room.type]?.icon || ROOM_ICONS[room.type];
+    body = `
+      <div class="kicker"><span class="ico">${icon}</span> Étage ${floorNow}/${floors} · ${room.hidden ? 'Inconnu → ' : ''}${ROOM_TYPE_LABELS[room.type] || NODE_TYPES[room.type]?.label}</div>
+      <h2>${title}</h2>
       ${enemy ? `<div class="hp enemy"><div style="width:${(100 * g.enemy.hp) / g.enemy.maxHp}%"></div></div>
-        <div class="enemy-line"><span>❤️ ${g.enemy.hp}/${g.enemy.maxHp}</span><span>DD ${enemy.dc + level.dcBonus}</span></div>` : ''}
-      ${voting ? `<p class="story">${esc(text)}</p>${renderVote(app, L)}` : renderResult(app, L, isHost)}`;
+        <div class="enemy-line"><span>❤️ ${g.enemy.hp}/${g.enemy.maxHp}</span>${g.enemy.rage ? `<span>😡 +${g.enemy.rage}</span>` : ''}</div>
+        ${g.phase === 'vote' ? intentLine(g, level) : ''}` : ''}
+      ${shop ? `<p class="gold-line">💰 ${g.gold} pièces d'or</p>` : ''}
+      ${g.phase === 'vote' ? `<p class="story">${esc(text)}</p>${renderVote(app, L)}` : renderResult(app, L, isHost)}`;
   }
 
   return `
@@ -216,7 +256,8 @@ export function renderGame(app, L) {
       <div class="status">
         <div class="panel levelbox">
           <div class="lv">${esc(level.name)}</div>
-          <div class="track">${track}</div>
+          <div class="runstats"><span title="Or du groupe">💰 ${g.gold || 0}</span><span title="Niveau du groupe">⭐ ${g.plevel}</span>${bag ? `<span class="bag" title="Sac du groupe">${bag}</span>` : ''}</div>
+          <div class="xp" title="Expérience : ${g.xp || 0}${nextXp ? ` / ${nextXp}` : ''}"><div style="width:${xpPct}%"></div></div>
           <div class="loot">🎒 ${(g.loot || []).map((id) => ITEMS[id].icon).join(' ') || 'aucun butin'}</div>
         </div>
         <button class="menu-btn" data-action="abandon" aria-label="${isHost ? 'Abandonner le run' : 'Quitter'}">${isHost ? '🏳️ Abandon' : '🚪 Quitter'}</button>
@@ -224,6 +265,28 @@ export function renderGame(app, L) {
     </div>
     <div class="panel ornate sheet" data-sheet>${body}</div>
   </div>`;
+}
+
+function renderLevelUp(app, L) {
+  const g = L.game;
+  const players = L.players || {};
+  const mine = Object.values(g.offers?.[app.uid] || {});
+  const myPick = g.picks?.[app.uid];
+  const waiting = Object.keys(g.offers || {}).filter((u) => !g.picks?.[u]).map((u) => esc(players[u]?.name || '?'));
+  return `
+    <div class="kicker"><span class="ico">⭐</span> Montée de niveau</div>
+    <h2>Le groupe passe niveau ${g.plevel} !</h2>
+    <p class="story">L’expérience forge les héros. ${mine.length ? 'Choisissez votre bonus pour la suite du run :' : 'Vous regardez vos compagnons choisir.'}</p>
+    <div class="choices">
+      ${mine.map((id) => {
+        const b = BOONS[id];
+        return `<button class="choice ${myPick === id ? 'voted' : ''}" data-action="pick" data-id="${id}">
+          <span class="lbl">${b.icon} ${b.name}</span><span></span>
+          <span class="meta"><span class="chip gold">${esc(b.desc)}</span></span></button>`;
+      }).join('')}
+    </div>
+    <div class="votebar"><span>${waiting.length ? `En attente : ${waiting.join(', ')}` : 'Tout le monde a choisi !'}</span><span data-countdown></span></div>
+    <div class="timer"><div data-timerbar style="width:100%"></div></div>`;
 }
 
 function renderVote(app, L) {
@@ -243,13 +306,17 @@ function renderVote(app, L) {
           .map(([u]) => `<img src="${portraitUrl(players[u]?.classId || 'guerrier')}" alt="${esc(players[u]?.name || '')}" title="${esc(players[u]?.name || '')}" />`).join('');
         const pct = pv ? Math.round(pv.chance * 100) : null;
         const tone = pct === null ? '' : pct >= 60 ? 'good' : pct >= 35 ? 'mid' : 'bad';
-        return `<button class="choice ${myVote === c.id ? 'voted' : ''} ${c.skill ? 'skill' : ''}" data-action="vote" data-id="${esc(c.id)}" ${canVote ? '' : 'disabled'}>
+        let meta;
+        if (pv) meta = `<span class="chip ${tone}">${pct}%</span><span>${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} (${esc(players[pv.uid]?.name || '')}) vs DD ${pv.dc}</span>`;
+        else if (c.price !== undefined) meta = `<span class="chip ${c.disabled ? 'bad' : 'gold'}">💰 ${c.price}</span><span>${esc(c.desc || '')}</span>`;
+        else if (c.skill) meta = `<span class="chip gold">Compétence</span><span>${esc(c.desc || '')}</span>`;
+        else if (c.item) meta = `<span class="chip gold">Objet</span><span>${esc(c.desc || '')}</span>`;
+        else if (c.path) meta = `<span>${esc(c.desc || '')}</span>`;
+        else meta = '<span class="chip">Sans risque</span>';
+        return `<button class="choice ${myVote === c.id ? 'voted' : ''} ${c.skill || c.item ? 'skill' : ''}" data-action="vote" data-id="${esc(c.id)}" ${canVote && !c.disabled ? '' : 'disabled'}>
           <span class="lbl">${esc(c.label)}</span>
           <span class="voters">${voterImgs}</span>
-          <span class="meta">
-            ${pv ? `<span class="chip ${tone}">${pct}%</span><span>${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} (${esc(players[pv.uid]?.name || '')}) vs DD ${pv.dc}</span>`
-              : c.skill ? `<span class="chip gold">Compétence</span><span>${esc(c.desc || '')}</span>` : '<span class="chip">Sans risque</span>'}
-          </span>
+          <span class="meta">${meta}</span>
         </button>`;
       }).join('')}
     </div>

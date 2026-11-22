@@ -33,7 +33,11 @@ npm test
 
 - **Jet** : d20 + la meilleure valeur du groupe pour la stat testée (ce personnage tente l'action) contre un DD. 20 naturel = critique, 1 = échec critique.
 - **Décision de groupe** : vote majoritaire, 30 s par vote. Égalité : le vote de l'hôte l'emporte s'il fait partie des ex æquo. Sans vote : choix au hasard.
-- **Combat** : réussite = l'ennemi prend des dégâts ; échec = l'ennemi frappe un membre au hasard. On revote jusqu'à la mort de l'ennemi (ou la fuite, impossible contre un boss).
+- **Carte** : chaque niveau a plusieurs étages de 2-3 portes (combat, élite, piège, trésor, autel, rencontre, repos, marchand, inconnu) puis le boss. Après chaque salle, le groupe vote la porte suivante ; la mini-carte montre les chemins possibles.
+- **Combat** : l'ennemi annonce son **intention** avant le vote : *attaque* (frappe si votre action échoue), *coup puissant* (frappe même si vous réussissez, sauf si vous **levez la garde**), *se protège* (DD +4 ce tour), *attaque empoisonnée*, *rage* (+2 dégâts). On revote jusqu'à la mort de l'ennemi ou la fuite (impossible contre un boss). Les boss deviennent furieux à mi-vie. Les **élites** ont plus de PV et frappent plus fort, mais rapportent double or/XP et un meilleur butin.
+- **États** : poison (−2 PV par tour pendant 3 tours), béni (+2 à tous les jets).
+- **Or et sac** : l'or (gagné en combat, coffres, fouilles) s'achète chez le marchand : potions de soin, bombes, eau bénite, parchemins de fuite, et un objet permanent. Les consommables se votent comme une action. L'or est perdu à la fin du run.
+- **Niveaux du groupe** : l'XP (combats, réussites) fait monter le groupe de niveau ; chaque joueur choisit alors un bonus parmi 3 (stat, PV, dégâts, chance, compétence rechargée), valable jusqu'à la fin du run.
 - **Mort permanente** : un personnage à 0 PV reste mort jusqu'à la fin du run (il regarde). Groupe entier mort = défaite.
 - **Butin** : victoire = chaque joueur garde tout le butin du run ; défaite = seulement l'objet le plus rare. Jusqu'à 2 objets équipés au début d'un run.
 - **Progression** : battre le boss d'un niveau débloque le suivant (choisi par l'hôte dans le salon).

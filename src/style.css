@@ -180,7 +180,7 @@ input:focus, select:focus, button:focus-visible, .btn:focus-visible { outline: 2
 .menu-btn { min-height: 40px; padding: 6px 12px; font-size: 0.85rem; }
 
 .sheet {
-  position: absolute; right: calc(16px + var(--safe-r)); bottom: calc(16px + var(--safe-b)); width: 440px; max-height: calc(100% - 140px);
+  position: absolute; right: calc(16px + var(--safe-r)); bottom: calc(16px + var(--safe-b)); width: 440px; max-height: calc(100% - 175px);
   overflow-y: auto; overscroll-behavior: contain;
 }
 .sheet .kicker { display: flex; gap: 8px; align-items: center; font-size: 0.75rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
@@ -300,4 +300,43 @@ input:focus, select:focus, button:focus-visible, .btn:focus-visible { outline: 2
 @media (prefers-reduced-motion: reduce) {
   .die.rolling { animation: none; }
   * { transition: none !important; }
+}
+
+/* ===== Profondeur : intentions, carte, or, XP ===== */
+.intent {
+  display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+  background: rgba(0, 0, 0, 0.45); border: 1px solid rgba(125, 96, 59, 0.8); font-size: 0.88rem;
+}
+.intent .ico { font-size: 1.3rem; line-height: 1; }
+.intent-heavy { border-color: var(--red); background: rgba(120, 20, 15, 0.35); animation: warn 1.2s ease-in-out infinite; }
+.intent-defend { border-color: var(--blue); }
+.intent-poison { border-color: #7ccf5a; }
+.intent-enrage { border-color: var(--amber); }
+@keyframes warn { 50% { box-shadow: 0 0 14px rgba(224, 87, 79, 0.6); } }
+.map { display: flex; align-items: center; gap: 4px; overflow-x: auto; padding: 8px 2px; margin: 6px 0; scrollbar-width: none; }
+.map::-webkit-scrollbar { display: none; }
+.map-floor { display: flex; flex-direction: column; gap: 4px; }
+.map-link { color: var(--line); font-size: 0.9rem; }
+.map-node {
+  width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; font-size: 0.95rem;
+  background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(107, 82, 51, 0.5); opacity: 0.45;
+}
+.map-node.done { opacity: 0.8; border-color: var(--line); }
+.map-node.cur { opacity: 1; border-color: var(--gold); background: rgba(227, 178, 90, 0.25); }
+.map-node.next { opacity: 1; border-color: var(--gold-hi); box-shadow: 0 0 10px rgba(246, 213, 142, 0.5); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { transform: scale(1.08); } }
+.runstats { display: flex; gap: 10px; justify-content: flex-end; font-weight: 700; font-size: 0.9rem; margin-top: 2px; }
+.runstats .bag sub { font-size: 0.6rem; }
+.xp { height: 4px; border-radius: 99px; background: #2b1d12; overflow: hidden; margin-top: 4px; }
+.xp > div { height: 100%; background: linear-gradient(90deg, #8b6cf0, #c9a7ff); transition: width 0.5s; }
+.gold-line { font-weight: 700; color: var(--gold-hi); }
+.member .boons { letter-spacing: -2px; }
+@media (max-width: 760px) {
+  .runstats { gap: 6px; font-size: 0.72rem; }
+  .map-node { width: 26px; height: 26px; font-size: 0.8rem; }
+  .intent { font-size: 0.8rem; padding: 6px 8px; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .runstats { font-size: 0.72rem; gap: 6px; }
+  .xp { display: none; }
 }
