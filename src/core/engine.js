@@ -43,14 +43,20 @@ const charOf = (game, players, uid) => {
 };
 
 // ---------- Salles ----------
-function makeRoom(rng, type, level) {
+function makeRoom(rng, type, level, used = null) {
   const room = {
     type,
     shape: { w: rng.int(8, 13), d: rng.int(8, 12), pillars: rng.int(0, 2) * 2, torches: rng.int(2, 4) },
   };
   if (type === 'combat' || type === 'elite') room.enemyId = rng.pick(level.enemies);
   else if (type === 'boss') room.enemyId = level.boss;
-  else if (EVENTS[type]) room.eventId = rng.pick(EVENTS[type]).id;
+  else if (EVENTS[type]) {
+    const pool = EVENTS[type].filter((e) => !e.hidden && (!e.themes || e.themes.includes(level.theme)));
+    // Pas deux fois le même événement dans un run (tant qu'il en reste d'inédits)
+    const fresh = used ? pool.filter((e) => !used.has(e.id)) : pool;
+    room.eventId = rng.pick(fresh.length ? fresh : pool.length ? pool : EVENTS[type].filter((e) => !e.hidden)).id;
+    used?.add(room.eventId);
+  }
   return room;
 }
 
@@ -79,6 +85,7 @@ export function generateMap(seed, levelId) {
   const level = getLevel(levelId);
   const rng = new Rng(`${seed}|map|${level.id}`);
   const floors = [];
+  const used = new Set();
   for (let f = 0; f < level.rooms; f++) {
     const count = f === 0 ? 2 : rng.int(2, 3);
     const weights = { ...level.weights, ...(f > 0 ? MAP_EXTRA_WEIGHTS : {}) };
@@ -89,7 +96,7 @@ export function generateMap(seed, levelId) {
       // pas deux portes identiques au même étage (sauf combat)
       for (let k = 0; k < 4 && type !== 'combat' && nodes.some((n) => n.type === type); k++) type = rng.weighted(weights);
       const real = type === 'unknown' ? rng.pick(['trap', 'chest', 'shrine', 'npc', 'combat']) : type;
-      nodes.push({ id: `${f}-${i}`, floor: f, type, room: makeRoom(rng, real, level), next: [] });
+      nodes.push({ id: `${f}-${i}`, floor: f, type, room: makeRoom(rng, real, level, used), next: [] });
     }
     floors.push(nodes);
   }
@@ -116,6 +123,11 @@ export function findNode(game, id) {
   return null;
 }
 
+/** Type affiché d'une porte (une porte inconnue est révélée par une carte ou une vision). */
+export function shownType(game, node) {
+  return node.type === 'unknown' && game.revealed ? node.room.type : node.type;
+}
+
 export function nextNodes(game) {
   if (!game.nodeId) return Object.values(game.map.floors[0]);
   return Object.values(findNode(game, game.nodeId)?.next || {}).map((id) => findNode(game, id));
@@ -134,7 +146,7 @@ export function createGame(seed, levelId, players) {
     levelId, party, map: generateMap(seed, levelId), nodeId: null,
     rooms: [{ type: 'entrance', shape: { w: 10, d: 9, pillars: 2, torches: 2 } }], roomIndex: 0,
     enemy: null, round: 0, phase: 'path', votes: {}, deadline: Date.now() + VOTE_SECONDS * 1000,
-    gold: 0, xp: 0, plevel: 1, blessed: 0, bag: { potion_soin: 1 }, shop: null,
+    gold: 0, xp: 0, plevel: 1, blessed: 0, cursed: false, flags: {}, revealed: false, intro: [], bag: { potion_soin: 1 }, shop: null,
     offers: {}, picks: {}, loot: [], outcome: null, lastResult: null, seedTag: rng.int(0, 9999),
   };
 }
@@ -165,6 +177,7 @@ function enterRoom(game, seed) {
   const rng = new Rng(`${seed}|enter|${game.roomIndex}`);
   game.enemy = null;
   game.shop = null;
+  game.intro = [];
   if (room.enemyId) {
     const e = ENEMIES[room.enemyId];
     const n = Object.keys(game.party).length;
@@ -172,6 +185,17 @@ function enterRoom(game, seed) {
     const hp = Math.round(e.hp * level.enemyScale * (1 + 0.5 * (n - 1)) * (elite ? ELITE.hp : 1));
     game.enemy = { id: room.enemyId, hp, maxHp: hp, elite, rage: 0, phase: 1, intent: 'attack' };
     rollIntent(game, rng);
+    if (room.type === 'boss') {
+      const flags = game.flags || {};
+      if (flags.allie) {
+        game.enemy.hp = Math.round(hp * 0.8);
+        game.intro.push(`⚔️ Votre allié libéré surgit et frappe ${e.name} par surprise (−${hp - game.enemy.hp} PV) !`);
+      }
+      if (flags.faveur) {
+        for (const m of Object.values(game.party)) if (m.alive) m.hp = Math.min(m.maxHp, m.hp + 6);
+        game.intro.push('🌟 La déesse tient sa promesse : le groupe est soigné (+6 PV).');
+      }
+    }
   }
   if (room.type === 'shop') {
     const ids = Object.keys(CONSUMABLES);
@@ -207,7 +231,7 @@ function consumableChoices(game, room) {
 export function getChoices(game, players) {
   if (game.phase === 'path') {
     return nextNodes(game).map((n, i, arr) => {
-      const t = NODE_TYPES[n.type];
+      const t = NODE_TYPES[shownType(game, n)];
       const side = arr.length === 1 ? 'Porte' : ['Porte de gauche', 'Porte du milieu', 'Porte de droite'][arr.length === 2 ? i * 2 : i];
       return { id: `go:${n.id}`, label: `${t.icon} ${t.label}`, path: true, desc: side + (t.desc ? ` — ${t.desc}` : '') };
     });
@@ -232,7 +256,11 @@ export function getChoices(game, players) {
       choices.push({ id: a.id, label: a.label, stat: a.stat });
     }
   } else {
-    for (const c of getEvent(room).choices) choices.push({ id: c.id, label: c.label, stat: c.safe ? null : c.stat });
+    for (const c of getEvent(room).choices) {
+      const v = eventChoiceState(game, players, c);
+      if (v.hidden) continue;
+      choices.push({ id: c.id, label: c.label, stat: c.safe ? null : c.stat, price: c.cost?.gold, disabled: v.disabled, desc: v.reason, classOnly: c.class });
+    }
   }
   const skillRoom = isFight(room) ? 'combat' : room.type;
   for (const [uid, m] of Object.entries(game.party)) {
@@ -242,6 +270,21 @@ export function getChoices(game, players) {
     choices.push({ id: `skill:${uid}`, label: `${cls.icon} ${cls.skill.name} (${players[uid].name})`, skill: true, desc: cls.skill.desc });
   }
   return [...choices, ...consumableChoices(game, room)];
+}
+
+/** Un choix d'événement est-il visible / jouable ? (classe présente, conditions, coût) */
+function eventChoiceState(game, players, c) {
+  const party = Object.entries(game.party).filter(([, m]) => m.alive);
+  if (c.class && !party.some(([u]) => players[u]?.classId === c.class)) return { hidden: true };
+  const r = c.requires || {};
+  if (r.cursed && !game.cursed) return { hidden: true };
+  if (r.poisoned && !party.some(([, m]) => m.poison > 0)) return { hidden: true };
+  if (r.item && !(game.bag?.[r.item] > 0)) return { hidden: true };
+  if (r.flag && !game.flags?.[r.flag]) return { hidden: true };
+  if (r.notFlag && game.flags?.[r.notFlag]) return { hidden: true };
+  const gold = (c.cost?.gold || 0) + (r.gold || 0);
+  if (gold && (game.gold || 0) < gold) return { disabled: true, reason: `Il faut ${gold} pièces d'or` };
+  return {};
 }
 
 function choiceDc(game, choiceId) {
@@ -256,7 +299,7 @@ function choiceDc(game, choiceId) {
 
 /** Bonus total d'un champion pour une stat (stat + chance + bénédiction). */
 function champMod(game, char, stat) {
-  return char.stats[stat] + char.luck + (game.blessed > 0 ? 2 : 0);
+  return char.stats[stat] + char.luck + (game.blessed > 0 ? 2 : 0) - (game.cursed ? 1 : 0);
 }
 
 /**
@@ -265,7 +308,7 @@ function champMod(game, char, stat) {
  */
 export function previewChoice(game, players, choice) {
   if (!choice.stat || choice.skill || game.phase !== 'vote') return null;
-  const champ = bestChampion(game, players, choice.stat);
+  const champ = bestChampion(game, players, choice.stat, choice.classOnly);
   if (!champ) return null;
   const dc = choiceDc(game, choice.id);
   const chance = Math.min(0.95, Math.max(0.05, (21 - (dc - champ.mod)) / 20));
@@ -295,10 +338,11 @@ export function votersFor(game, players) {
 }
 
 // ---------- Outils de résolution ----------
-function bestChampion(game, players, stat) {
+function bestChampion(game, players, stat, classId = null) {
   let best = null;
   for (const [uid, m] of Object.entries(game.party)) {
     if (!m.alive || !players[uid]) continue;
+    if (classId && players[uid].classId !== classId) continue;
     const c = charOf(game, players, uid);
     const mod = champMod(game, c, stat);
     if (!best || mod > best.mod) best = { uid, mod, char: c };
@@ -363,6 +407,39 @@ function gainGold(game, n, lines) {
 
 function gainXp(game, n) {
   game.xp = (game.xp || 0) + n;
+}
+
+/** Effets génériques des événements (voir le format dans data/events.js). */
+function applyEffect(game, players, rng, lines, e, actor, level) {
+  const scale = (n) => Math.round(n * (1 + level.dcBonus / 4));
+  const target = actor || randomAlive(game, rng);
+  if (e.text) lines.push(e.text);
+  if (e.damage) hurt(game, target, scale(e.damage), players, lines);
+  if (e.damageAll) for (const u of Object.keys(game.party)) hurt(game, u, scale(e.damageAll), players, lines);
+  if (e.poison && game.party[target]?.alive) { game.party[target].poison = 3; lines.push(`🤢 ${players[target].name} est empoisonné.`); }
+  if (e.poisonAll) {
+    for (const [u, m] of Object.entries(game.party)) if (m.alive) m.poison = 3;
+    lines.push('🤢 Tout le groupe est empoisonné.');
+  }
+  if (e.maxHp) {
+    for (const m of Object.values(game.party)) if (m.alive) { m.maxHp += e.maxHp; m.hp += e.maxHp; }
+    lines.push(`❤️ +${e.maxHp} PV max pour tout le groupe.`);
+  }
+  if (e.heal) healAll(game, e.heal, players, lines, !!e.cure);
+  else if (e.cure) {
+    for (const [u, m] of Object.entries(game.party)) if (m.alive && m.poison) { m.poison = 0; lines.push(`🌿 ${players[u].name} n'est plus empoisonné.`); }
+  }
+  if (e.bless) { game.blessed = Math.max(game.blessed || 0, e.bless); lines.push(`✨ Béni pendant ${e.bless} tours (+2 aux jets).`); }
+  if (e.curse && !game.cursed) { game.cursed = true; lines.push('💀 Le groupe est maudit : −1 à tous les jets.'); }
+  if (e.cleanse && game.cursed) { game.cursed = false; lines.push('🕊️ La malédiction est levée.'); }
+  if (e.refreshSkills) for (const m of Object.values(game.party)) if (m.alive) m.skillUsed = false;
+  if (e.item) { game.bag[e.item] = (game.bag[e.item] || 0) + 1; lines.push(`🎒 ${CONSUMABLES[e.item].icon} ${CONSUMABLES[e.item].name} ajouté au sac.`); }
+  if (e.gold) gainGold(game, rng.int(e.gold[0], e.gold[1]), lines);
+  if (e.loot && rng.chance(e.loot)) gainLoot(game, rng, lines, e.lootBoost || 0);
+  if (e.xp) gainXp(game, e.xp);
+  if (e.flag) game.flags = { ...(game.flags || {}), [e.flag]: true };
+  if (e.unflag && game.flags) delete game.flags[e.unflag];
+  if (e.reveal) game.revealed = true;
 }
 
 /** L'ennemi agit selon son intention annoncée. */
@@ -512,28 +589,25 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   } else {
     const ev = getEvent(room);
     const choice = ev.choices.find((c) => c.id === choiceId);
+    if (choice.cost?.gold) { game.gold = Math.max(0, (game.gold || 0) - choice.cost.gold); lines.push(`💰 −${choice.cost.gold} pièces d'or.`); }
+    if (choice.cost?.item) game.bag[choice.cost.item] = Math.max(0, (game.bag[choice.cost.item] || 0) - 1);
     let effect;
+    let actor = null;
     if (choice.safe) {
       effect = choice.success;
       label = choice.label;
     } else {
-      const champ = bestChampion(game, players, choice.stat);
-      championUid = champ.uid;
+      const champ = bestChampion(game, players, choice.stat, choice.class);
+      championUid = actor = champ.uid;
       label = `${players[champ.uid].name} : ${choice.label}`;
       rollRes = roll(rng, champ.mod, choiceDc(game, choiceId), choice.stat);
       effect = rollRes.success ? choice.success : choice.fail;
       if (rollRes.success) gainXp(game, 2);
-      if (effect.damage) {
-        lines.push(effect.text);
-        hurt(game, champ.uid, Math.round(effect.damage * (1 + level.dcBonus / 4)), players, lines);
-        effect = { ...effect, text: null };
-      }
     }
-    if (effect.text) lines.push(effect.text);
-    if (effect.heal) healAll(game, effect.heal, players, lines);
-    if (effect.gold) gainGold(game, rng.int(effect.gold[0], effect.gold[1]), lines);
-    if (effect.loot && rng.chance(effect.loot)) gainLoot(game, rng, lines);
-    roomDone = true;
+    applyEffect(game, players, rng, lines, effect, actor, level);
+    if (effect.next) {
+      game.rooms[game.roomIndex] = { ...room, eventId: effect.next };
+    } else roomDone = true;
   }
 
   // Combat : ennemi vaincu, sinon il agit, change de phase et annonce sa prochaine intention

@@ -88,3 +88,53 @@ test('des runs complets se terminent, avec boutiques, niveaux, objets valides', 
   assert.ok(total.levelups > 0 && total.buys > 0 && total.elites > 0 && total.uses > 0, JSON.stringify(total));
   console.log('Issues :', outcomes, 'Systèmes :', total);
 });
+
+import { EVENTS } from '../src/data/events.js';
+import { CONSUMABLES } from '../src/data/run.js';
+import { CLASSES } from '../src/data/classes.js';
+
+const EFFECT_KEYS = new Set(['text', 'damage', 'damageAll', 'heal', 'gold', 'loot', 'lootBoost', 'xp', 'poison', 'poisonAll', 'bless',
+  'item', 'maxHp', 'refreshSkills', 'flag', 'unflag', 'curse', 'cleanse', 'reveal', 'next', 'cure']);
+
+test('contenu des événements cohérent', () => {
+  const all = Object.values(EVENTS).flat();
+  const ids = new Set(all.map((e) => e.id));
+  assert.equal(ids.size, all.length, 'identifiants d’événements en double');
+  for (const ev of all) {
+    for (const c of ev.choices) {
+      assert.ok(c.safe || (c.stat && c.dc), `${ev.id}/${c.id} : ni jet ni safe`);
+      if (c.class) assert.ok(CLASSES[c.class], `${ev.id}/${c.id} : classe inconnue`);
+      for (const eff of [c.success, c.fail].filter(Boolean)) {
+        for (const k of Object.keys(eff)) assert.ok(EFFECT_KEYS.has(k), `${ev.id}/${c.id} : effet inconnu ${k}`);
+        if (eff.next) assert.ok(ids.has(eff.next), `${ev.id}/${c.id} : enchaînement vers ${eff.next} introuvable`);
+        if (eff.item) assert.ok(CONSUMABLES[eff.item], `${ev.id}/${c.id} : consommable inconnu`);
+      }
+      if (!c.safe) assert.ok(c.fail, `${ev.id}/${c.id} : jet sans effet d'échec`);
+    }
+  }
+  // Chaque événement caché est atteignable par un enchaînement
+  const targets = new Set(all.flatMap((e) => e.choices.flatMap((c) => [c.success?.next, c.fail?.next])).filter(Boolean));
+  for (const ev of all.filter((e) => e.hidden)) assert.ok(targets.has(ev.id), `${ev.id} caché mais jamais atteint`);
+  // Assez de variété par biome et par type
+  for (const level of LEVELS) {
+    for (const [type, list] of Object.entries(EVENTS)) {
+      const pool = list.filter((e) => !e.hidden && (!e.themes || e.themes.includes(level.theme)));
+      assert.ok(pool.length >= 3, `${level.theme}/${type} : seulement ${pool.length} événements`);
+    }
+  }
+});
+
+test('fils rouges : un allié libéré affaiblit le boss, la déesse soigne', () => {
+  let g = createGame('arc', 1, players);
+  const withAlly = structuredClone(g);
+  withAlly.flags = { allie: true, faveur: true };
+  // on saute directement au boss
+  const bossNode = g.map.floors.at(-1)[0];
+  const go = (state) => { const s = structuredClone(state); s.nodeId = g.map.floors.at(-2)[0].id; s.phase = 'path'; return resolveChoice(s, players, `go:${bossNode.id}`, 'arc'); };
+  const plain = go(g);
+  for (const m of Object.values(withAlly.party)) m.hp = 3;
+  const ally = go(withAlly);
+  assert.ok(ally.enemy.hp < plain.enemy.hp, 'le boss devrait être affaibli');
+  assert.ok(Object.values(ally.party).every((m) => m.hp === 9), 'la déesse soigne de 6');
+  assert.equal(ally.intro.length, 2);
+});

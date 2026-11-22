@@ -195,6 +195,8 @@ function normalize(L) {
     L.game.rooms = Object.values(L.game.rooms || {});
     L.game.enemy = L.game.enemy || null;
     L.game.bag = L.game.bag || {};
+    L.game.intro = L.game.intro ? Object.values(L.game.intro) : [];
+    L.game.flags = L.game.flags || {};
     L.game.offers = L.game.offers || {};
     L.game.picks = L.game.picks || {};
     if (L.game.shop) L.game.shop = Object.values(L.game.shop);

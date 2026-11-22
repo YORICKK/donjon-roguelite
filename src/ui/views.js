@@ -4,7 +4,7 @@ import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus } from '../data/items.js';
 import { LEVELS, getLevel } from '../data/levels.js';
 import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
 import { NODE_TYPES, CONSUMABLES, BOONS, XP_LEVELS, STATUS, ELITE } from '../data/run.js';
-import { computeCharacter, getChoices, getEvent, votersFor, previewChoice, keptLoot, nextNodes } from '../core/engine.js';
+import { computeCharacter, getChoices, getEvent, votersFor, previewChoice, keptLoot, nextNodes, shownType } from '../core/engine.js';
 import { online } from '../net/index.js';
 import { esc, fmtMod } from './dom.js';
 
@@ -179,7 +179,8 @@ function renderMap(g) {
   const floors = Object.values(g.map.floors);
   return `<div class="map">${floors.map((f) => `<div class="map-floor">${Object.values(f).map((n) => {
     const cls = n.id === g.nodeId ? 'cur' : visited.has(n.id) ? 'done' : reachable.has(n.id) ? 'next' : '';
-    return `<span class="map-node ${cls}" title="${esc(NODE_TYPES[n.type].label)}">${NODE_TYPES[n.type].icon}</span>`;
+    const t = NODE_TYPES[shownType(g, n)];
+    return `<span class="map-node ${cls}" title="${esc(t.label)}">${t.icon}</span>`;
   }).join('')}</div>`).join('<span class="map-link">›</span>')}</div>`;
 }
 
@@ -246,7 +247,8 @@ export function renderGame(app, L) {
         <div class="enemy-line"><span>❤️ ${g.enemy.hp}/${g.enemy.maxHp}</span>${g.enemy.rage ? `<span>😡 +${g.enemy.rage}</span>` : ''}</div>
         ${g.phase === 'vote' ? intentLine(g, level) : ''}` : ''}
       ${shop ? `<p class="gold-line">💰 ${g.gold} pièces d'or</p>` : ''}
-      ${g.phase === 'vote' ? `<p class="story">${esc(text)}</p>${renderVote(app, L)}` : renderResult(app, L, isHost)}`;
+      ${g.phase === 'vote' && g.round === 0 && g.intro?.length ? `<ul class="lines intro">${g.intro.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+      ${g.phase === 'vote' ? `<p class="story">${esc(text)}</p>${g.cursed ? '<p class="small result-ko">💀 Vous êtes maudits : −1 à tous les jets.</p>' : ''}${renderVote(app, L)}` : renderResult(app, L, isHost)}`;
   }
 
   return `
@@ -256,7 +258,7 @@ export function renderGame(app, L) {
       <div class="status">
         <div class="panel levelbox">
           <div class="lv">${esc(level.name)}</div>
-          <div class="runstats"><span title="Or du groupe">💰 ${g.gold || 0}</span><span title="Niveau du groupe">⭐ ${g.plevel}</span>${bag ? `<span class="bag" title="Sac du groupe">${bag}</span>` : ''}</div>
+          <div class="runstats"><span title="Or du groupe">💰 ${g.gold || 0}</span><span title="Niveau du groupe">⭐ ${g.plevel}</span>${g.cursed ? '<span title="Maudits : −1 à tous les jets">💀</span>' : ''}${g.flags?.allie ? '<span title="Un allié vous attend au boss">🤝</span>' : ''}${g.flags?.faveur ? '<span title="Faveur de la déesse">🌟</span>' : ''}${g.revealed ? '<span title="Carte révélée">🗺️</span>' : ''}${bag ? `<span class="bag" title="Sac du groupe">${bag}</span>` : ''}</div>
           <div class="xp" title="Expérience : ${g.xp || 0}${nextXp ? ` / ${nextXp}` : ''}"><div style="width:${xpPct}%"></div></div>
           <div class="loot">🎒 ${(g.loot || []).map((id) => ITEMS[id].icon).join(' ') || 'aucun butin'}</div>
         </div>
@@ -307,8 +309,10 @@ function renderVote(app, L) {
         const pct = pv ? Math.round(pv.chance * 100) : null;
         const tone = pct === null ? '' : pct >= 60 ? 'good' : pct >= 35 ? 'mid' : 'bad';
         let meta;
-        if (pv) meta = `<span class="chip ${tone}">${pct}%</span><span>${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} (${esc(players[pv.uid]?.name || '')}) vs DD ${pv.dc}</span>`;
-        else if (c.price !== undefined) meta = `<span class="chip ${c.disabled ? 'bad' : 'gold'}">💰 ${c.price}</span><span>${esc(c.desc || '')}</span>`;
+        const priceChip = c.price !== undefined ? `<span class="chip ${c.disabled ? 'bad' : 'gold'}">💰 ${c.price}</span>` : '';
+        if (pv) meta = `${priceChip}<span class="chip ${tone}">${pct}%</span><span>${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} (${esc(players[pv.uid]?.name || '')}) vs DD ${pv.dc}</span>`;
+        else if (c.disabled && c.desc) meta = `${priceChip}<span>${esc(c.desc)}</span>`;
+        else if (c.price !== undefined) meta = `${priceChip}<span>${esc(c.desc || '')}</span>`;
         else if (c.skill) meta = `<span class="chip gold">Compétence</span><span>${esc(c.desc || '')}</span>`;
         else if (c.item) meta = `<span class="chip gold">Objet</span><span>${esc(c.desc || '')}</span>`;
         else if (c.path) meta = `<span>${esc(c.desc || '')}</span>`;
