@@ -27,10 +27,10 @@ export const INTENTS = {
 export const COMBAT_ACTIONS = [
   // « Attaquer » : arme (FOR) ou sort (INT), selon le meilleur bonus du groupe.
   { id: 'attaque', label: 'Attaquer', stats: ['for', 'int'] },
-  { id: 'sournois', label: 'Attaque sournoise (DD +2, dégâts ×1,5)', stat: 'dex', dcMod: 2, dmgMult: 1.5, notUndead: true },
-  { id: 'repousser', label: 'Repousser les morts-vivants', stat: 'sag', undeadOnly: true, dmgMult: 1.5 },
-  { id: 'defendre', label: "Lever la garde (bloque l'attaque)", stat: 'for', dcMod: -3, guard: true },
-  { id: 'fuir', label: 'Fuir (pas de butin)', stat: 'dex', flee: true, noBoss: true },
+  { id: 'sournois', label: 'Attaque sournoise', desc: 'Plus difficile (DD +2) mais dégâts ×1,5', stat: 'dex', dcMod: 2, dmgMult: 1.5, notUndead: true },
+  { id: 'repousser', label: 'Repousser les morts', desc: 'Prière contre les morts-vivants : dégâts ×1,5', stat: 'sag', undeadOnly: true, dmgMult: 1.5 },
+  { id: 'defendre', label: 'Lever la garde', desc: "Bloque l'attaque de l'ennemi, même un coup puissant", stat: 'for', dcMod: -3, guard: true },
+  { id: 'fuir', label: 'Fuir', desc: 'Quitter le combat, sans butin', stat: 'dex', flee: true, noBoss: true },
 ];
 
 // ---------------------------------------------------------------------------------------------

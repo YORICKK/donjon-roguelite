@@ -336,14 +336,16 @@ function renderVote(app, L) {
         const tone = pct === null ? '' : pct >= 60 ? 'good' : pct >= 35 ? 'mid' : 'bad';
         let meta;
         const priceChip = c.price !== undefined ? `<span class="chip ${c.disabled ? 'bad' : 'gold'}">💰 ${c.price}</span>` : '';
-        if (pv) meta = `${priceChip}<span class="chip ${tone}">${pct}%</span><span>${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} (${esc(players[pv.uid]?.name || '')}) vs DD ${pv.dc}</span>`;
+        if (pv) meta = `${priceChip}<span class="chip ${tone}">${pct}%</span><span>${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} · DD ${pv.dc}</span>`;
         else if (c.disabled && c.desc) meta = `${priceChip}<span>${esc(c.desc)}</span>`;
         else if (c.price !== undefined) meta = `${priceChip}<span>${esc(c.desc || '')}</span>`;
         else if (c.skill) meta = `<span class="chip gold">Compétence</span><span>${esc(c.desc || '')}</span>`;
         else if (c.item) meta = `<span class="chip gold">Objet</span><span>${esc(c.desc || '')}</span>`;
         else if (c.path) meta = `<span>${esc(c.desc || '')}</span>`;
         else meta = '<span class="chip">Sans risque</span>';
-        return `<button class="choice ${myVote === c.id ? 'voted' : ''} ${c.skill || c.item ? 'skill' : ''}" data-action="vote" data-id="${esc(c.id)}" ${canVote && !c.disabled ? '' : 'disabled'}>
+        // détail complet au survol / appui long (le bouton n'en montre qu'un résumé)
+        const tip = [c.label, pv ? `${players[pv.uid]?.name || ''} tente : ${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} contre DD ${pv.dc} (${pct} %)` : '', c.desc || ''].filter(Boolean).join(' — ');
+        return `<button class="choice ${myVote === c.id ? 'voted' : ''} ${c.skill || c.item ? 'skill' : ''}" title="${esc(tip)}" data-action="vote" data-id="${esc(c.id)}" ${canVote && !c.disabled ? '' : 'disabled'}>
           <span class="lbl">${esc(c.label)}</span>
           <span class="voters">${voterImgs}</span>
           <span class="meta">${meta}</span>

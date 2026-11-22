@@ -268,8 +268,8 @@ export function getChoices(game, players) {
       const stat = actionStat(game, players, a);
       const label = a.stats ? (stat === 'int' ? 'Lancer un sort' : "Attaquer à l'arme") : a.label;
       // Fuir n'est utile qu'en mauvaise posture : rangé avec les compétences et objets, selon l'état du groupe
-      if (a.flee) fleeChoice = { id: a.id, label, stat };
-      else choices.push({ id: a.id, label, stat });
+      if (a.flee) fleeChoice = { id: a.id, label, stat, desc: a.desc };
+      else choices.push({ id: a.id, label, stat, desc: a.desc });
     }
   } else {
     for (const c of getEvent(room).choices) {
