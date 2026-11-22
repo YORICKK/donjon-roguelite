@@ -169,3 +169,21 @@ estoc, sort, prière, coup reçu, mort, victoire) et jouées avec l'`AnimationMi
 `src/scene/fx.js` ajoute projectiles, étincelles et anneaux de soin ; `playResult()` dans
 `src/scene/dungeon.js` enchaîne l'action du héros, l'impact, la contre-attaque et les blessures.
 Un modèle sans articulations reste jouable (animation procédurale de secours).
+
+## Performances
+
+Mesures sur une salle de combat avec 4 héros (navigateur, mode téléphone) :
+501 → **~30-65 appels de dessin**, 315k → **~120-150k triangles**, 17 lumières variables → **8 fixes**.
+
+- **Lumières virtuelles** (`FakeLight` dans `src/scene/dungeon.js`) : salles et objets déclarent leurs lumières,
+  un petit pool fixe de vraies lumières (3 sur mobile, 5 sur ordinateur) éclaire la salle courante. Le nombre de
+  lumières ne change jamais, donc aucun shader n'est recompilé en changeant de salle.
+- **Seules la salle courante et ses voisines sont dessinées.**
+- **Fusion au chargement** (`src/scene/kit.js`) : les sous-maillages ordinaires d'un modèle sont fusionnés, la couleur
+  du matériau étant cuite dans les couleurs de sommets ; matériaux en simple face (Blender exporte en double face).
+- **Personnages en un seul maillage** à squelette rigide (`skinCharacters`) : 4 héros = 6 appels de dessin au lieu de 105.
+- **Résolution adaptative** : baisse sous 40 i/s, remonte quand c'est fluide (plancher ×1). Pas d'antialiasing ni
+  d'ombres sur mobile.
+- **Compteur** : ajouter `?fps` à l'adresse (ex. `https://roguelite-d1977.web.app/?fps`) pour afficher images/s,
+  appels de dessin, triangles, lumières et résolution, y compris sur téléphone.
+- Les modèles sont compressés à l'envoi par Firebase Hosting (~440 Ko transférés pour 4,6 Mo de fichiers).

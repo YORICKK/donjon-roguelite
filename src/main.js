@@ -19,6 +19,17 @@ const scene = createDungeonScene(document.getElementById('scene'));
 scene.build(generateDungeon('menu', 1), getLevel(1));
 if (import.meta.env.DEV) window.__scene = scene; // débogage uniquement (absent du build)
 
+// Compteur de performance : ajouter ?fps à l'adresse (ex. https://…/?fps) pour l'afficher, y compris sur téléphone.
+if (new URLSearchParams(location.search).has('fps')) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:20;font:11px monospace;color:#0f0;background:rgba(0,0,0,.65);padding:3px 6px;border-radius:4px;pointer-events:none;white-space:pre';
+  document.body.appendChild(box);
+  setInterval(() => {
+    const s = scene.stats();
+    box.textContent = `${s.fps} i/s · ${s.calls} appels · ${Math.round(s.triangles / 1000)}k tri · ${s.lights} lum · res ×${s.pixelRatio}`;
+  }, 500);
+}
+
 const app = {
   screen: 'name', // name | menu | inventory | lobby
   name: localStorage.getItem('donjon:name') || '',

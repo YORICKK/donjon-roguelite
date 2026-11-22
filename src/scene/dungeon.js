@@ -3,19 +3,36 @@
 // plus tard, les props pourront être remplacés par des modèles GLB faits dans Blender.
 import * as THREE from 'three';
 import { ENEMIES } from '../data/events.js';
-import { loadKit, tintKit, Batch, cloneProp, seeded } from './kit.js';
+import { loadKit, tintKit, Batch, cloneProp, cloneModel, seeded } from './kit.js';
 import { Animator } from './anim.js';
 import { Fx } from './fx.js';
 import { getTheme, ROOM_DRESSING } from '../data/themes.js';
 
 const SPACING = 20; // distance entre centres de salles
+
+/**
+ * Lumière déclarée par une salle ou un objet, sans coût de rendu. À chaque image, un petit pool de
+ * vraies PointLight (nombre fixe => aucun shader recompilé) prend la place des plus importantes
+ * de la salle courante. Même interface que PointLight (color, intensity, distance, decay).
+ */
+class FakeLight extends THREE.Object3D {
+  constructor(color, intensity = 1, distance = 0, decay = 2, priority = 1) {
+    super();
+    this.isFakeLight = true;
+    this.color = new THREE.Color(color);
+    this.intensity = intensity;
+    this.distance = distance;
+    this.decay = decay;
+    this.priority = priority;
+  }
+}
 const WALL_H = 4;
 
 export function createDungeonScene(canvas) {
   const isTouch = matchMedia('(pointer: coarse)').matches;
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !isTouch, powerPreference: 'high-performance' });
   // Sur smartphone, on limite la résolution interne pour garder 60 i/s et la batterie.
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2)); // ajusté ensuite par adaptQuality()
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 0.95;
@@ -48,6 +65,56 @@ export function createDungeonScene(canvas) {
   let running = true;
   let flashLight = new THREE.PointLight(0xffffff, 0, 14);
   scene.add(flashLight);
+
+  // Pool fixe de vraies lumières pour les FakeLight de la salle courante (et des voisines)
+  const POOL = isTouch ? 3 : 5;
+  const pool = Array.from({ length: POOL }, () => {
+    const l = new THREE.PointLight(0xffffff, 0, 10, 2);
+    scene.add(l);
+    return l;
+  });
+  const tmpV = new THREE.Vector3();
+  function updateLightPool() {
+    const cands = [];
+    rooms.forEach((r, i) => {
+      if (Math.abs(i - current) > 1) return;
+      for (const f of r.fakes) {
+        if (f.intensity <= 0.01) continue;
+        // priorité : salle courante d'abord, lumière principale avant les objets
+        cands.push({ f, score: (i === current ? 100 : 0) + f.priority * 5 + f.intensity * 0.1 });
+      }
+    });
+    cands.sort((a, b) => b.score - a.score);
+    pool.forEach((l, k) => {
+      const c = cands[k];
+      if (!c) { l.intensity = 0; return; }
+      c.f.getWorldPosition(tmpV);
+      l.position.copy(tmpV);
+      l.color.copy(c.f.color);
+      l.intensity = c.f.intensity;
+      l.distance = c.f.distance;
+      l.decay = c.f.decay;
+    });
+  }
+
+  // Résolution adaptative : on baisse la définition si l'image passe sous ~45 i/s, on remonte si c'est fluide.
+  const maxRatio = Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2);
+  // Plancher à ×1 : un écran bridé à 30 i/s (mode économie) ne doit pas devenir flou.
+  const minRatio = Math.min(maxRatio, 1);
+  let ratio = maxRatio;
+  let frames = 0, acc = 0, goodWindows = 0, fps = 60;
+  function adaptQuality(dt) {
+    frames++; acc += dt;
+    if (acc < 2) return;
+    fps = frames / acc;
+    frames = 0; acc = 0;
+    if (document.hidden) return;
+    if (fps < 40 && ratio > minRatio) { ratio = Math.max(minRatio, ratio - 0.25); goodWindows = 0; renderer.setPixelRatio(ratio); resize(); }
+    else if (fps > 57) {
+      goodWindows++;
+      if (goodWindows >= 3 && ratio < maxRatio) { ratio = Math.min(maxRatio, ratio + 0.25); goodWindows = 0; renderer.setPixelRatio(ratio); resize(); }
+    } else goodWindows = 0;
+  }
 
   // bottomInset : hauteur (px) cachée par le panneau du bas sur mobile ; on décale l'image vers le haut
   // pour que l'action reste visible au-dessus du panneau.
@@ -108,7 +175,7 @@ export function createDungeonScene(canvas) {
     const SLOTS = [[-1.15, 0], [1.15, 0], [-2.0, -1.0], [2.0, -1.0]];
     members.forEach((m, idx) => {
       const model = kit.pieces[`hero_${m.classId}`];
-      const obj = model ? model.clone(true) : new THREE.Group();
+      const obj = model ? cloneModel(model) : new THREE.Group();
       castShadows(obj);
       const [x, z] = SLOTS[idx % SLOTS.length];
       obj.position.set(x, 0, z);
@@ -541,14 +608,16 @@ export function createDungeonScene(canvas) {
       }
       } // fin du rendu sans kit
 
-      const light = new THREE.PointLight(pal.torch, 0, 22, 1.4);
+      const light = new FakeLight(pal.torch, 0, 22, 1.4, 10);
       light.position.set(0, 3.2, 0);
       g.add(light);
 
       const props = buildProps(def, mat, kit);
       g.add(props.group);
       world.add(g);
-      rooms.push({ def, group: g, light, props, D, floaters });
+      const fakes = [];
+      g.traverse((o) => { if (o.isFakeLight) fakes.push(o); });
+      rooms.push({ def, group: g, light, props, D, floaters, fakes });
     });
 
     current = 0;
@@ -600,7 +669,8 @@ export function createDungeonScene(canvas) {
 
   function tick() {
     if (!running) return;
-    const dt = Math.min(clock.getDelta(), 0.05);
+    const raw = clock.getDelta();
+    const dt = Math.min(raw, 0.05);
     const t = clock.elapsedTime;
     if (camT < 1) {
       camT = Math.min(1, camT + dt / 2.2);
@@ -617,6 +687,8 @@ export function createDungeonScene(canvas) {
       if (shake === 0) camera.position.x = 0;
     }
     flashLight.intensity *= 0.9;
+    adaptQuality(raw);
+    rooms.forEach((r, i) => { r.group.visible = Math.abs(i - current) <= 1; });
     fx.update(dt);
     animateAmbient(t, dt);
     const roomZ = -current * SPACING;
@@ -629,6 +701,7 @@ export function createDungeonScene(canvas) {
       animateProps(r.props, t, dt);
       for (const f of r.floaters) { f.obj.position.y = f.y + Math.sin(t * 0.8 + f.phase) * 0.18; f.obj.rotation.y += f.spin * dt; }
     });
+    updateLightPool();
     renderer.render(scene, camera);
     requestAnimationFrame(tick);
   }
@@ -637,6 +710,12 @@ export function createDungeonScene(canvas) {
   return {
     build, goToRoom, jumpTo, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset, playResult, cheer,
     get current() { return current; },
+    /** Diagnostic de performance (appels de dessin, triangles, lumières, shaders). */
+    stats() {
+      let lights = 0;
+      scene.traverse((o) => { if (o.isLight && o.visible) lights++; });
+      return { fps: Math.round(fps), calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, lights, programs: renderer.info.programs?.length, geometries: renderer.info.memory.geometries, pixelRatio: renderer.getPixelRatio() };
+    },
     dispose() { running = false; clear(); renderer.dispose(); window.removeEventListener('resize', resize); },
   };
 }
@@ -652,7 +731,7 @@ function buildProps(def, mat, kit) {
       const lidPivot = new THREE.Group();
       lidPivot.position.set(0, 0.7, -2 - 0.425);
       lidPivot.add(cloneProp(kit, 'chest_lid'));
-      const glow = new THREE.PointLight(0xffd36b, 0, 5);
+      const glow = new FakeLight(0xffd36b, 0, 5);
       glow.position.set(0, 1.2, -2);
       group.add(body, lidPivot, glow);
       Object.assign(props, { lid: lidPivot, glow });
@@ -662,7 +741,7 @@ function buildProps(def, mat, kit) {
       altar.position.set(0, 0, -2.2);
       const gem = cloneProp(kit, 'gem');
       gem.position.set(0, 1.9, -2.2);
-      const l = new THREE.PointLight(0x66ffee, 6, 6);
+      const l = new FakeLight(0x66ffee, 6, 6);
       l.position.set(0, 1.9, -2.2);
       group.add(altar, gem, l);
       Object.assign(props, { gem, gemY: 1.9 });
@@ -672,7 +751,7 @@ function buildProps(def, mat, kit) {
       camp.position.set(0, 0, -1.8);
       const fire = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.8, 5), new THREE.MeshBasicMaterial({ color: 0xff7722 }));
       fire.position.set(0, 0.5, -1.8);
-      const fl = new THREE.PointLight(0xff8833, 8, 8);
+      const fl = new FakeLight(0xff8833, 8, 8);
       fl.position.set(0, 1, -1.8);
       group.add(camp, fire, fl);
       Object.assign(props, { fire, fireLight: fl });
@@ -685,7 +764,7 @@ function buildProps(def, mat, kit) {
         p.rotation.y = ry;
         group.add(p);
       }
-      const glow = new THREE.PointLight(0xffc870, 8, 7);
+      const glow = new FakeLight(0xffc870, 8, 7);
       glow.position.set(0, 2, -2);
       group.add(glow);
       def = { ...def, type: 'npc', shop: true };
@@ -709,11 +788,11 @@ function buildProps(def, mat, kit) {
     const e = ENEMIES[def.enemyId];
     const model = kit?.pieces[`enemy_${def.enemyId}`];
     // Modèles Blender à l'échelle réelle ; seuls le rat (géant) est agrandi.
-    const enemy = model ? model.clone(true) : buildEnemy(e, mat);
+    const enemy = model ? cloneModel(model) : buildEnemy(e, mat);
     enemy.position.set(0, 0, e.boss ? (model ? -1.2 : -3.5) : -2.2);
     if (model) enemy.scale.setScalar(({ rat_geant: 1.3, chef_gobelin: 1.15 }[def.enemyId] || 1) * (def.type === 'elite' ? 1.18 : 1));
     if (def.type === 'elite') {
-      const aura = new THREE.PointLight(0xff3020, 10, 5);
+      const aura = new FakeLight(0xff3020, 10, 5);
       aura.position.set(0, 1.2, enemy.position.z + 0.6);
       group.add(aura);
     }
@@ -742,7 +821,7 @@ function buildProps(def, mat, kit) {
     const band = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.12, 0.95), mat(0xc9a43b, { metalness: 0.6 }));
     band.position.set(0, 0.55, -1.5);
     group.add(body, lidPivot, band);
-    const glow = new THREE.PointLight(0xffd36b, 0, 5);
+    const glow = new FakeLight(0xffd36b, 0, 5);
     glow.position.set(0, 1.2, -1.5);
     group.add(glow);
     props.lid = lidPivot;
@@ -764,7 +843,7 @@ function buildProps(def, mat, kit) {
     base.position.set(0, 0.5, -2);
     const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.4), mat(0x66ffee, { emissive: 0x33aa99, emissiveIntensity: 1.2 }));
     gem.position.set(0, 1.7, -2);
-    const l = new THREE.PointLight(0x66ffee, 6, 6);
+    const l = new FakeLight(0x66ffee, 6, 6);
     l.position.copy(gem.position);
     group.add(base, gem, l);
     props.gem = gem;
@@ -800,7 +879,7 @@ function buildProps(def, mat, kit) {
     }
     const fire = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 5), new THREE.MeshBasicMaterial({ color: 0xff7722 }));
     fire.position.set(0, 0.55, -1.5);
-    const fl = new THREE.PointLight(0xff8833, 8, 8);
+    const fl = new FakeLight(0xff8833, 8, 8);
     fl.position.set(0, 1, -1.5);
     group.add(fire, fl);
     props.fire = fire;
