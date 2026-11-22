@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "lobbies": {
+      "$code": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "$code.length >= 4 && $code.length <= 8"
+      }
+    }
+  }
+}
