@@ -9,6 +9,8 @@ import { profiles, multiLobbies, soloLobbies, makeCode, emptyProfile } from './n
 import { createDungeonScene } from './scene/dungeon.js';
 import { toast } from './ui/dom.js';
 import { renderName, renderMenu, renderInventory, renderLobby, renderGame } from './ui/views.js';
+import { CLASSES } from './data/classes.js';
+import { actionFor } from './scene/anim.js';
 
 const RESULT_AUTO_MS = 9000;
 const ui = document.getElementById('ui');
@@ -68,7 +70,7 @@ function afterRender() {
       lines.style.visibility = 'hidden';
       txt.style.visibility = 'hidden';
       die.classList.add('rolling');
-      if (g.lastResult.championUid) scene.heroAct(g.lastResult.championUid);
+      reactScene(g); // l'action se joue pendant que le dé roule
       const iv = setInterval(() => { die.textContent = 1 + Math.floor(Math.random() * 20); }, 60);
       setTimeout(() => {
         clearInterval(iv);
@@ -77,12 +79,10 @@ function afterRender() {
         die.textContent = die.dataset.final;
         lines.style.visibility = '';
         txt.style.visibility = '';
-        reactScene(g);
       }, 900);
     } else die.classList.add(finalCls);
   } else if (g?.lastResult && app.animatedResult !== key) {
     app.animatedResult = key;
-    if (g.lastResult.championUid) scene.heroAct(g.lastResult.championUid);
     reactScene(g);
   }
   tickCountdown();
@@ -92,15 +92,23 @@ function afterRender() {
 function reactScene(g) {
   const r = g.lastResult;
   const room = g.rooms[g.roomIndex];
-  const hurt = r.lines.some((l) => l.startsWith('💥'));
-  const meHurt = r.lines.some((l) => l.startsWith(`💥 ${app.name} `));
-  if (hurt) { scene.flash(0xff2222); scene.shakeHit(); if (meHurt) navigator.vibrate?.(120); }
-  else if (r.roll?.success || !r.roll) scene.flash(0xffdd66);
-  scene.setRoomState({
+  const players = app.lobby.players || {};
+  const champ = players[r.championUid];
+  const hurt = r.hurt || [];
+  if (hurt.includes(app.uid) && navigator.userActivation?.hasBeenActive) navigator.vibrate?.([60, 40, 120]);
+  scene.playResult({
+    championUid: r.championUid,
+    anim: actionFor(r, champ ? CLASSES[champ.classId]?.skill.id : null),
+    skillId: r.choiceId?.startsWith('skill:') && champ ? CLASSES[champ.classId]?.skill.id : null,
+    success: r.roll ? r.roll.success : true,
+    fled: !!g.enemy?.fled,
+    enemyDied: !!(g.enemy && g.enemy.hp <= 0 && !g.enemy.fled),
     enemyHpFrac: g.enemy ? g.enemy.hp / g.enemy.maxHp : null,
-    enemyDead: !!(g.enemy && g.enemy.hp <= 0),
+    hurt,
+    healed: r.lines.some((l) => l.startsWith('💚')),
     chestOpen: room.type === 'chest' && r.lines.some((l) => l.startsWith('🎁')),
   });
+  if (g.outcome === 'victory') setTimeout(() => scene.cheer(), 2200);
 }
 
 function tickCountdown() {
@@ -176,7 +184,10 @@ function normalize(L) {
     L.game.loot = L.game.loot ? Object.values(L.game.loot) : [];
     L.game.rooms = Object.values(L.game.rooms || {});
     L.game.enemy = L.game.enemy || null;
-    if (L.game.lastResult) L.game.lastResult.lines = Object.values(L.game.lastResult.lines || {});
+    if (L.game.lastResult) {
+      L.game.lastResult.lines = Object.values(L.game.lastResult.lines || {});
+      L.game.lastResult.hurt = Object.values(L.game.lastResult.hurt || {});
+    }
   }
   for (const p of Object.values(L.players || {})) p.equipped = p.equipped ? Object.values(p.equipped) : [];
   return L;

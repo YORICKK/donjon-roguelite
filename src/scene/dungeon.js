@@ -4,6 +4,8 @@
 import * as THREE from 'three';
 import { ENEMIES } from '../data/events.js';
 import { loadKit, tintKit, Batch, cloneProp, seeded } from './kit.js';
+import { Animator } from './anim.js';
+import { Fx } from './fx.js';
 
 const SPACING = 20; // distance entre centres de salles
 const WALL_H = 4;
@@ -13,8 +15,12 @@ export function createDungeonScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   // Sur smartphone, on limite la résolution interne pour garder 60 i/s et la batterie.
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
-  renderer.shadowMap.enabled = false;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.95;
+  // Ombres douces sur ordinateur ; désactivées sur mobile (coût GPU).
+  renderer.shadowMap.enabled = !isTouch;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 120);
@@ -24,6 +30,13 @@ export function createDungeonScene(canvas) {
   const fill = new THREE.PointLight(0xffe2c0, 6, 12, 1.5); // lumière portée par le groupe
   camera.add(fill);
   scene.add(camera);
+  // Lumière principale qui suit la salle courante et projette les ombres des personnages
+  const keyLight = new THREE.SpotLight(0xffd9a8, 35, 26, 0.85, 0.6, 1.2);
+  keyLight.castShadow = !isTouch;
+  keyLight.shadow.mapSize.set(1024, 1024);
+  keyLight.shadow.bias = -0.0005;
+  keyLight.shadow.normalBias = 0.02;
+  scene.add(keyLight, keyLight.target);
 
   let rooms = [];
   let current = 0;
@@ -69,13 +82,23 @@ export function createDungeonScene(canvas) {
   // ---------- Groupe de héros (modèles Blender) qui suit la caméra ----------
   const partyGroup = new THREE.Group();
   scene.add(partyGroup);
-  let heroes = []; // { uid, classId, obj, alive, lunge }
+  let heroes = []; // { uid, classId, obj, alive, lunge, anim }
   let partyKey = '';
   let lastMembers = [];
   function setParty(members) {
     lastMembers = members;
-    const key = JSON.stringify(members);
-    if (key === partyKey) return;
+    // On ne reconstruit le groupe que si sa composition change ; la mort est animée sur place.
+    const key = JSON.stringify(members.map((m) => [m.uid, m.classId]));
+    if (key === partyKey) {
+      for (const m of members) {
+        const h = heroes.find((x) => x.uid === m.uid);
+        if (!h || h.alive === m.alive) continue;
+        h.alive = m.alive;
+        if (!m.alive) setTimeout(() => h.anim?.die(), 700);
+        else h.anim?.revive();
+      }
+      return;
+    }
     partyKey = key;
     partyGroup.clear();
     heroes = [];
@@ -85,23 +108,32 @@ export function createDungeonScene(canvas) {
     members.forEach((m, idx) => {
       const model = kit.pieces[`hero_${m.classId}`];
       const obj = model ? model.clone(true) : new THREE.Group();
+      castShadows(obj);
       const [x, z] = SLOTS[idx % SLOTS.length];
       obj.position.set(x, 0, z);
       obj.userData.baseZ = z;
       obj.rotation.y = Math.PI + x * 0.22; // de dos, tournés vers le centre de la salle
       partyGroup.add(obj);
-      heroes.push({ ...m, obj, lunge: 0 });
+      const anim = new Animator(obj);
+      if (!m.alive) anim.die();
+      heroes.push({ ...m, obj, lunge: 0, anim });
     });
   }
   function heroAct(uid) {
     const h = heroes.find((x) => x.uid === uid);
-    if (h) h.lunge = 1;
+    if (h && !h.anim.rigged) h.lunge = 1;
   }
   function animateParty(t, dt) {
     partyGroup.position.set(0, 0, camera.position.z - 3.4);
     const walking = camT < 1;
     heroes.forEach((h, i) => {
       const o = h.obj;
+      if (h.anim.rigged) {
+        h.anim.setBase(walking ? 'walk' : 'idle');
+        h.anim.update(dt);
+        return;
+      }
+      // Modèle statique : petite animation procédurale de secours
       h.lunge = Math.max(0, h.lunge - dt * 1.8);
       const lungeZ = -Math.sin(h.lunge * Math.PI) * 0.8;
       if (!h.alive) {
@@ -114,6 +146,101 @@ export function createDungeonScene(canvas) {
       o.position.z = o.userData.baseZ + lungeZ;
       o.rotation.z = walking ? Math.sin(t * 9 + i) * 0.05 : 0;
     });
+  }
+
+  // ---------- Effets et chorégraphie des résultats ----------
+  const fx = new Fx(scene);
+  const timers = new Set();
+  const later = (ms, fn) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
+  const worldPos = (obj, y = 1.2) => obj.getWorldPosition(new THREE.Vector3()).setY(y);
+  const enemyObj = () => rooms[current]?.props.enemy || null;
+  const enemyAnim = () => rooms[current]?.props.anim || null;
+  // Moment de l'impact dans chaque animation d'action (secondes)
+  const IMPACT = { attack: 0.55, stab: 0.25, cast: 0.8, pray: 0.55 };
+  const SKILL_COLORS = { boule_de_feu: 0xff6a1a, soin_de_groupe: 0x9dffb0 };
+
+  /**
+   * Joue le résultat d'un choix : action du héros, impact sur l'ennemi, contre-attaque, blessures.
+   * r = { championUid, anim, skillId, success, enemyDied, hurt[], healed, chestOpen, enemyHpFrac, fled }
+   */
+  function playResult(r) {
+    for (const id of timers) clearTimeout(id);
+    timers.clear();
+    const hero = heroes.find((h) => h.uid === r.championUid);
+    const enemy = enemyObj();
+    const eAnim = enemyAnim();
+    const action = r.anim;
+    let t = 0;
+    if (hero && action) {
+      if (hero.anim.rigged) hero.anim.play(action); else hero.lunge = 1;
+      const hand = worldPos(hero.obj, 1.3);
+      const target = enemy ? worldPos(enemy, 1.1) : hand.clone().add(new THREE.Vector3(0, 0, -4));
+      t = (IMPACT[action] || 0.5) * 1000;
+      if (action === 'cast') {
+        const color = SKILL_COLORS[r.skillId] || 0x7fb6ff;
+        later(t - 150, () => fx.projectile(worldPos(hero.obj, 1.5), target, color, { duration: 0.4, size: r.skillId === 'boule_de_feu' ? 0.35 : 0.2 }));
+        t += 300;
+      } else if (action === 'pray') {
+        later(t - 200, () => heroes.forEach((h) => {
+          if (!h.alive) return;
+          fx.ring(worldPos(h.obj, 0), r.healed ? 0x9dffb0 : 0xffe08a);
+          fx.burst(worldPos(h.obj, 0.3), r.healed ? 0x9dffb0 : 0xffe08a, { count: 18, speed: 1.2, up: 3, gravity: 1.5, life: 1.0, size: 0.14 });
+        }));
+      } else if (enemy && (action === 'attack' || action === 'stab')) {
+        later(t, () => fx.slash(target.clone().add(new THREE.Vector3(0, 0, 0.6)), 0xffffff, action === 'stab' ? -1 : 1));
+      }
+    }
+    // Impact sur l'ennemi
+    if (enemy && r.success && !r.fled) {
+      later(t, () => {
+        fx.burst(worldPos(enemy, 1.1), r.skillId === 'boule_de_feu' ? 0xff7a2a : 0xffe3a0, { count: 30, speed: 3.5 });
+        shakeHit(0.2);
+        if (r.enemyDied) {
+          if (eAnim?.rigged) eAnim.die();
+          setRoomState({ enemyHpFrac: 0, enemyDead: true });
+        } else {
+          eAnim?.play('hit');
+          setRoomState({ enemyHpFrac: r.enemyHpFrac });
+        }
+      });
+    }
+    // Contre-attaque / piège : les héros touchés encaissent
+    if (r.hurt.length) {
+      let tHit = t + 150;
+      if (enemy && !r.enemyDied) {
+        later(t + 100, () => {
+          const d = eAnim?.rigged ? eAnim.play('attack') : 0;
+          if (!d) fx.burst(worldPos(enemy, 1.0), 0xff5544, { count: 12 });
+        });
+        tHit = t + 100 + (eAnim?.rigged ? 550 : 300);
+      }
+      later(tHit, () => {
+        flash(0xff2222);
+        shakeHit(0.35);
+        for (const uid of r.hurt) {
+          const h = heroes.find((x) => x.uid === uid);
+          if (!h) continue;
+          if (h.anim.rigged) h.anim.play('hit');
+          fx.burst(worldPos(h.obj, 1.2), 0xd0201a, { count: 22, speed: 2.5, size: 0.12 });
+        }
+      });
+    } else if (r.success || !hero) {
+      later(t, () => flash(0xffdd66));
+    }
+    if (r.chestOpen) later(t + 200, () => {
+      setRoomState({ chestOpen: true });
+      const c = rooms[current]?.props.lid;
+      if (c) fx.burst(c.getWorldPosition(new THREE.Vector3()).setY(1.2), 0xffd36b, { count: 40, speed: 2.5, up: 3, life: 1.2, size: 0.16 });
+    });
+  }
+
+  function cheer() {
+    heroes.forEach((h, i) => { if (h.alive) later(i * 120, () => h.anim.play('cheer')); });
+    later(200, () => heroes.forEach((h) => h.alive && fx.burst(worldPos(h.obj, 2.2), 0xffd36b, { count: 20, up: 3, gravity: -3, life: 1.2 })));
+  }
+
+  function castShadows(obj) {
+    obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
 
   const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.9, ...extra });
@@ -345,14 +472,17 @@ export function createDungeonScene(canvas) {
     updateLights();
   }
 
-  function setRoomState({ enemyHpFrac = null, enemyDead = false, chestOpen = false } = {}) {
+  function setRoomState({ enemyHpFrac, enemyDead, chestOpen } = {}) {
     const p = rooms[current]?.props;
     if (!p) return;
     if (p.enemy) {
-      p.enemyDead = enemyDead;
-      if (enemyHpFrac !== null) p.hpFrac = enemyHpFrac;
+      if (enemyDead !== undefined) {
+        if (enemyDead && !p.enemyDead) p.anim?.die();
+        p.enemyDead = enemyDead;
+      }
+      if (enemyHpFrac != null) p.hpFrac = enemyHpFrac;
     }
-    if (p.lid) p.chestOpen = chestOpen;
+    if (p.lid && chestOpen !== undefined) p.chestOpen = chestOpen;
   }
 
   function flash(color = 0xff3333) {
@@ -361,7 +491,7 @@ export function createDungeonScene(canvas) {
     flashLight.position.copy(camera.position).add(new THREE.Vector3(0, 0, -3));
   }
 
-  function shakeHit() { shake = 0.35; }
+  function shakeHit(amount = 0.35) { shake = Math.max(shake, amount); }
   let shake = 0;
 
   function tick() {
@@ -383,6 +513,10 @@ export function createDungeonScene(canvas) {
       if (shake === 0) camera.position.x = 0;
     }
     flashLight.intensity *= 0.9;
+    fx.update(dt);
+    const roomZ = -current * SPACING;
+    keyLight.position.set(0, 7.5, camera.position.z - 1.5);
+    keyLight.target.position.set(0, 0, roomZ - 1);
 
     rooms.forEach((r, i) => {
       if (Math.abs(i - current) > 1) return;
@@ -395,7 +529,7 @@ export function createDungeonScene(canvas) {
   requestAnimationFrame(tick);
 
   return {
-    build, goToRoom, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset,
+    build, goToRoom, setRoomState, flash, shakeHit, setParty, heroAct, setBottomInset, playResult, cheer,
     get current() { return current; },
     dispose() { running = false; clear(); renderer.dispose(); window.removeEventListener('resize', resize); },
   };
@@ -462,6 +596,11 @@ function buildProps(def, mat, kit) {
     if (model) enemy.scale.setScalar(def.enemyId === 'rat_geant' ? 1.4 : e.boss ? 1.3 : 1);
     else if (e.boss) enemy.scale.setScalar(1.6);
     group.add(enemy);
+    enemy.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    if (model) {
+      const anim = new Animator(enemy);
+      if (anim.rigged) props.anim = anim;
+    }
     props.enemy = enemy;
     props.baseScale = enemy.scale.x;
     props.hpFrac = 1;
@@ -511,7 +650,8 @@ function buildProps(def, mat, kit) {
     const npc = cloneProp(kit, 'npc_marchand');
     npc.position.set(0.6, 0, -1.9);
     group.add(npc);
-    props.npc = npc;
+    const anim = new Animator(npc);
+    if (anim.rigged) props.npcAnim = anim; else props.npc = npc;
   } else if (def.type === 'npc') {
     const robe = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.5, 6), mat(0x5d4e8c));
     robe.position.set(0.5, 0.75, -1.8);
@@ -604,7 +744,11 @@ function buildEnemy(e, mat) {
 }
 
 function animateProps(p, t, dt) {
-  if (p.enemy) {
+  if (p.anim) {
+    // Ennemi articulé : l'animation gère attaque, coups reçus et mort ; on garde le flottement des spectres.
+    p.anim.update(dt);
+    if (p.ghost && !p.enemyDead) p.enemy.position.y = 0.25 + Math.sin(t * 2) * 0.15;
+  } else if (p.enemy) {
     const target = p.enemyDead ? 0.001 : p.baseScale;
     const s = THREE.MathUtils.lerp(p.enemy.scale.x, target, dt * 4);
     p.enemy.scale.setScalar(s);
@@ -618,6 +762,7 @@ function animateProps(p, t, dt) {
   }
   if (p.gem) { p.gem.rotation.y += dt; p.gem.position.y = (p.gemY || 1.7) + Math.sin(t * 2) * 0.1; }
   if (p.npc) p.npc.rotation.y = Math.sin(t) * 0.4;
+  if (p.npcAnim) p.npcAnim.update(dt);
   if (p.fire) { p.fire.scale.y = 1 + Math.sin(t * 13) * 0.15; p.fireLight.intensity = 7 + Math.sin(t * 17) * 1.5; }
   if (p.portal) p.portal.rotation.z += dt * 0.6;
   if (p.spikes) p.spikes.forEach((s, i) => { s.position.y = 0.05 + Math.max(0, Math.sin(t * 2 + i)) * 0.15; });

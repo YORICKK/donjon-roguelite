@@ -172,6 +172,7 @@ function hurt(game, uid, amount, players, lines) {
   const m = game.party[uid];
   m.hp = Math.max(0, m.hp - amount);
   lines.push(`💥 ${players[uid].name} perd ${amount} PV.`);
+  (game._hurt ||= []).push(uid);
   if (m.hp <= 0) { m.alive = false; lines.push(`☠️ ${players[uid].name} est mort. Pour de bon.`); }
 }
 
@@ -324,7 +325,9 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   }
 
   const anyAlive = Object.values(game.party).some((m) => m.alive);
-  game.lastResult = { label, lines, roll, championUid, roomDone, choiceId };
+  // hurt : joueurs touchés (pour les animations de réaction côté client)
+  game.lastResult = { label, lines, roll, championUid, roomDone, choiceId, hurt: game._hurt || [] };
+  delete game._hurt;
   game.phase = 'result';
   game.votes = {};
   if (!anyAlive) { game.outcome = 'defeat'; }

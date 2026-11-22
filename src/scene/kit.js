@@ -6,6 +6,7 @@
 //   barrel, crate, bones, rubble, banner.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { normalizeJointNames } from './anim.js';
 
 // enemies.glb : enemy_<id> pour chaque ennemi de data/events.js (face vers +Z, pieds à y=0), npc_marchand.
 // heroes.glb : hero_<classId> (guerrier, mage, voleur, clerc), même convention.
@@ -19,6 +20,7 @@ export async function loadKit(files = MODEL_FILES) {
   for (const gltf of gltfs) {
     for (const node of [...gltf.scene.children]) {
       node.position.set(0, 0, 0);
+      normalizeJointNames(node);
       node.updateMatrixWorld(true);
       pieces[node.name] = node;
     }
@@ -73,6 +75,7 @@ export class Batch {
         const im = new THREE.InstancedMesh(mesh.geometry, mesh.material, mats.length);
         mats.forEach((m, i) => im.setMatrixAt(i, tmp.multiplyMatrices(m, mesh.matrixWorld)));
         im.instanceMatrix.needsUpdate = true;
+        im.receiveShadow = true;
         im.computeBoundingSphere();
         parent.add(im);
       });
