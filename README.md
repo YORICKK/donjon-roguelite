@@ -123,14 +123,17 @@ gh repo create donjon-roguelite --private --source . --push
 - Si l'hôte quitte pendant un run, la partie se fige (pas encore de migration d'hôte).
 - Les règles Realtime Database autorisent tout joueur authentifié à écrire dans un salon (suffisant pour jouer entre amis, à durcir avant une diffusion publique, par ex. avec des Cloud Functions qui résolvent les votes).
 - Les salons ne sont pas nettoyés automatiquement.
-- Les ennemis et le PNJ sont encore des formes générées en code (l'environnement vient du kit Blender).
+- Les modèles sont statiques (pas de squelette d'animation) : les ennemis flottent, oscillent et rétrécissent en mourant par code.
 
 ## Kit 3D Blender
 
 L'environnement (dalles, murs en pierre, arches, piliers, torches, plafonds de couloir, coffre,
 autel, feu de camp, tonneaux, caisses, ossements, gravats, bannières) est modélisé dans
 [`blender/dungeon_kit.blend`](blender/dungeon_kit.blend) et exporté en
-`public/models/dungeon_kit.glb` (un nœud nommé par pièce, couleurs par sommet).
+`public/models/dungeon_kit.glb` (un nœud nommé par pièce, couleurs par sommet). Les ennemis
+(collection `Enemies`) sont exportés dans `public/models/enemies.glb`, un nœud `enemy_<id>` par
+ennemi de `src/data/events.js` (face vers l'avant, pieds au sol) plus `npc_marchand`. Un nouvel
+ennemi sans modèle garde automatiquement une forme simple.
 `src/scene/kit.js` le charge, teinte la pierre selon la palette du niveau et instancie murs et dalles.
 Si le GLB ne charge pas, la scène retombe sur les formes simples.
 
