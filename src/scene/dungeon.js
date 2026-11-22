@@ -183,7 +183,7 @@ export function createDungeonScene(canvas) {
       } else if (action === 'pray') {
         later(t - 200, () => heroes.forEach((h) => {
           if (!h.alive) return;
-          fx.ring(worldPos(h.obj, 0), r.healed ? 0x9dffb0 : 0xffe08a);
+          fx.ring(worldPos(h.obj, 0), r.healed ? 0x2bd45a : 0xd9a93a);
           fx.burst(worldPos(h.obj, 0.3), r.healed ? 0x9dffb0 : 0xffe08a, { count: 18, speed: 1.2, up: 3, gravity: 1.5, life: 1.0, size: 0.14 });
         }));
       } else if (enemy && (action === 'attack' || action === 'stab')) {
@@ -593,7 +593,7 @@ function buildProps(def, mat, kit) {
     // Modèles Blender à l'échelle réelle ; seuls le rat (géant) est agrandi.
     const enemy = model ? model.clone(true) : buildEnemy(e, mat);
     enemy.position.set(0, 0, e.boss ? (model ? -1.2 : -3.5) : -2.2);
-    if (model) enemy.scale.setScalar(def.enemyId === 'rat_geant' ? 1.4 : e.boss ? 1.3 : 1);
+    if (model) enemy.scale.setScalar({ rat_geant: 1.3, chef_gobelin: 1.15 }[def.enemyId] || 1);
     else if (e.boss) enemy.scale.setScalar(1.6);
     group.add(enemy);
     enemy.traverse((o) => { if (o.isMesh) o.castShadow = true; });

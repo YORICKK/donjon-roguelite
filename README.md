@@ -123,7 +123,7 @@ gh repo create donjon-roguelite --private --source . --push
 - Si l'hôte quitte pendant un run, la partie se fige (pas encore de migration d'hôte).
 - Les règles Realtime Database autorisent tout joueur authentifié à écrire dans un salon (suffisant pour jouer entre amis, à durcir avant une diffusion publique, par ex. avec des Cloud Functions qui résolvent les votes).
 - Les salons ne sont pas nettoyés automatiquement.
-- Les modèles sont statiques (pas de squelette d'animation) : les ennemis flottent, oscillent et rétrécissent en mourant par code.
+- Les personnages sont articulés en pièces rigides (pas de peau déformable) : coudes et genoux se plient par segments.
 
 ## Kit 3D Blender
 
@@ -140,3 +140,17 @@ Si le GLB ne charge pas, la scène retombe sur les formes simples.
 Pour modifier une pièce : éditez-la dans Blender (collection `DungeonKit`), gardez son nom et son
 origine, puis exportez la collection en glTF binaire (`.glb`), Y en haut, couleurs par sommet
 « Active », vers `public/models/dungeon_kit.glb`.
+
+## Personnages et animations
+
+Héros, ennemis et marchand sont construits dans Blender (collections `Characters` et `CharEnemies`,
+script réutilisable dans le texte Blender `char_helpers`) comme des pièces rigides articulées.
+Chaque articulation est un objet nommé `<modèle>__<articulation>` avec son pivot au niveau du joint :
+`hips > torso > head, arm_R > forearm_R > hand_R…, leg_R > shin_R` (droite du personnage = -X dans Blender),
+et `body > head, tail, leg_FL…` pour le rat.
+
+Les animations sont décrites comme des données dans `src/scene/anim.js` (repos, marche, attaque,
+estoc, sort, prière, coup reçu, mort, victoire) et jouées avec l'`AnimationMixer` de three.js.
+`src/scene/fx.js` ajoute projectiles, étincelles et anneaux de soin ; `playResult()` dans
+`src/scene/dungeon.js` enchaîne l'action du héros, l'impact, la contre-attaque et les blessures.
+Un modèle sans articulations reste jouable (animation procédurale de secours).

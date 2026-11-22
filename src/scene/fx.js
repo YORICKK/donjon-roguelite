@@ -118,7 +118,7 @@ export class Fx {
         }
       } else if (it.kind === 'ring') {
         const f = it.t / it.life;
-        it.obj.scale.setScalar(1 + f * it.radius * 3);
+        it.obj.scale.setScalar(1 + f * it.radius);
         it.obj.material.opacity = Math.max(0, 1 - f);
         if (f >= 1) this.remove(i);
       } else if (it.kind === 'slash') {

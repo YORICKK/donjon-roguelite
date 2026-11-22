@@ -89,13 +89,16 @@ function afterRender() {
   updateInset();
 }
 
+// Vibration (mobile) : seulement après une interaction réelle, sinon le navigateur la refuse.
+const buzz = (p) => { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(p); };
+
 function reactScene(g) {
   const r = g.lastResult;
   const room = g.rooms[g.roomIndex];
   const players = app.lobby.players || {};
   const champ = players[r.championUid];
   const hurt = r.hurt || [];
-  if (hurt.includes(app.uid) && navigator.userActivation?.hasBeenActive) navigator.vibrate?.([60, 40, 120]);
+  if (hurt.includes(app.uid)) buzz([60, 40, 120]);
   scene.playResult({
     championUid: r.championUid,
     anim: actionFor(r, champ ? CLASSES[champ.classId]?.skill.id : null),
@@ -328,7 +331,7 @@ const actions = {
     upd({ status: 'playing', seed, game: createGame(seed, L.levelId || 1, players) });
   },
   vote(el) {
-    navigator.vibrate?.(15);
+    buzz(15);
     upd({ [`game/votes/${app.uid}`]: el.dataset.id });
   },
   continue() { resolving = `${app.lobby.seed}|${app.lobby.game.roomIndex}|${app.lobby.game.round}|result`; doContinue(); },

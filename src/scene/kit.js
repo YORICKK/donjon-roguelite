@@ -30,7 +30,8 @@ export async function loadKit(files = MODEL_FILES) {
       o.material.userData.kit = true;
       // Sans carte d'environnement, un métal pur paraît noir : on garde un éclat discret.
       o.material.metalness = Math.min(o.material.metalness, 0.3);
-      if (o.material.name === 'M_Ghost') {
+      if (o.material.name === 'C_Holy') o.material.side = THREE.DoubleSide;
+      if (o.material.name === 'M_Ghost' || o.material.name === 'C_Ghost') {
         o.material.transparent = true;
         o.material.opacity = 0.7;
         o.material.depthWrite = false;
