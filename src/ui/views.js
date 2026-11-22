@@ -30,8 +30,8 @@ export function itemChip(id, extra = '', attrs = '', selected = false) {
   const it = ITEMS[id];
   if (!it) return '';
   const r = RARITY[it.rarity];
-  return `<button class="item ${selected ? 'selected' : ''}" style="--rc:${r.color}" ${attrs} title="${esc(r.label)}">
-    <span class="ico">${it.icon}</span><span>${esc(it.name)}<br><span class="muted small">${esc(it.companion ? it.desc : describeBonus(it.bonus))}</span></span>${extra}</button>`;
+  return `<button class="item ${selected ? 'selected' : ''} ${it.shiny ? 'shiny' : ''}" style="--rc:${r.color}" ${attrs} title="${esc(r.label)}${it.shiny ? ' — variante chromatique' : ''}">
+    <span class="ico">${it.icon}${it.shiny ? '✨' : ''}</span><span>${esc(it.name)}<br><span class="muted small">${esc(it.companion ? it.desc : describeBonus(it.bonus))}</span></span>${extra}</button>`;
 }
 
 const G_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.4 5.7c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
@@ -99,7 +99,7 @@ export function renderInventory(app) {
     <p class="muted small">Conservé entre les parties. Équipez jusqu'à ${MAX_EQUIPPED} objets avant chaque run.</p>
     <div class="items">${items.length ? items.map(([id, n]) => itemChip(id, `<span class="chip">×${n}</span>`)).join('') : '<p class="muted">Rien pour le moment. Ouvrez des coffres !</p>'}</div>
     <h3 style="margin-top:14px">🐾 Compagnons</h3>
-    <p class="muted small">Un compagnon par joueur et par run. On en trouve sur les boss, les élites, chez le marchand… ou en secourant un animal.</p>
+    <p class="muted small">Un compagnon par joueur et par run. On en trouve sur les boss, les élites, chez le marchand… ou en secourant un animal. ✨ 1 fois sur 10, c’est une variante chromatique : si vous avez les deux, choisissez celle qui vous accompagne.</p>
     <div class="items">${pets.length ? pets.map(([id]) => itemChip(id)).join('') : '<p class="muted">Aucun compagnon pour l\u2019instant.</p>'}</div>
     <div class="action-bar"><button data-action="menu">← Retour</button></div>
   </div></div>`;
@@ -139,7 +139,7 @@ export function renderLobby(app, L) {
               <li class="${p.online === false ? 'offline' : ''}">
                 ${portrait(p.classId)}
                 <span class="grow">${uid === L.hostUid ? '👑 ' : ''}<b>${esc(p.name)}</b>${uid === app.uid ? ' <span class="muted">(vous)</span>' : ''}<br>
-                <span class="muted small">${p.classId ? CLASSES[p.classId].name : 'choisit sa classe…'}${ITEMS[p.companion]?.companion ? ` · ${ITEMS[p.companion].icon} ${esc(ITEMS[p.companion].name)}` : ''}</span></span>
+                <span class="muted small">${p.classId ? CLASSES[p.classId].name : 'choisit sa classe…'}${ITEMS[p.companion]?.companion ? ` · ${ITEMS[p.companion].icon}${ITEMS[p.companion].shiny ? '✨' : ''} ${esc(ITEMS[p.companion].name)}` : ''}</span></span>
                 <span>${p.ready || app.solo ? '✅' : '⏳'}</span>
               </li>`).join('')}
           </ul>
@@ -228,7 +228,7 @@ export function renderGame(app, L) {
     return `<div class="member ${m.alive ? '' : 'dead'} ${uid === app.uid ? 'me' : ''}">
       ${portrait(p.classId)}
       <div class="info">
-        <div class="nm">${esc(p.name)}${m.skillUsed ? '' : ' <span title="Compétence disponible">★</span>'}${m.pet && ITEMS[m.pet] ? ` <span title="${esc(ITEMS[m.pet].name)}">${ITEMS[m.pet].icon}</span>` : ''}</div>
+        <div class="nm">${esc(p.name)}${m.skillUsed ? '' : ' <span title="Compétence disponible">★</span>'}${m.pet && ITEMS[m.pet] ? ` <span title="${esc(ITEMS[m.pet].name)}">${ITEMS[m.pet].icon}${ITEMS[m.pet].shiny ? '✨' : ''}</span>` : ''}</div>
         <div class="sub"><span class="cls">${c.name || ''}</span><span>${m.alive ? `${m.hp}/${m.maxHp}` : '☠️'}</span>
           ${m.poison ? `<span title="Empoisonné">${STATUS.poison.icon}</span>` : ''}${g.blessed > 0 && m.alive ? `<span title="Béni">${STATUS.blessed.icon}</span>` : ''}
           ${boons ? `<span class="boons" title="Bonus de niveau">${boons}</span>` : ''}${p.online === false ? '<span>📴</span>' : ''}</div>

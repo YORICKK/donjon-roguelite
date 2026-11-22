@@ -45,6 +45,25 @@ export const ITEMS = {
   },
 };
 
+// ---------- Variantes chromatiques des compagnons ----------
+// Chaque compagnon existe aussi en version « chromatique », bien plus flashy, obtenue 1 fois sur 10.
+// Même pouvoir ; seul l'aspect change. look : teinte imposée (0-1), saturation, luminosité, lueur, étincelles.
+export const SHINY_CHANCE = 0.1;
+const SHINY_LOOKS = {
+  pet_ecureuil: { label: 'doré', hue: 0.13, sat: 1, light: 1.35, glow: 0xffc030, sparkle: 0xffe27a },
+  pet_chien: { label: 'rose bonbon', hue: 0.9, sat: 0.95, light: 1.25, glow: 0xff3fa8, sparkle: 0xff9bd8 },
+  pet_loup: { label: 'arctique', hue: 0.54, sat: 0.85, light: 1.7, glow: 0x30d8ff, sparkle: 0xaef4ff },
+  pet_ours: { label: 'cosmique', hue: 0.76, sat: 0.9, light: 1.3, glow: 0x9b4dff, sparkle: 0xd2a8ff },
+  pet_dragon: { label: 'émeraude', hue: 0.37, sat: 1, light: 1.25, glow: 0x2dff7a, sparkle: 0xb6ffcf },
+};
+for (const [id, look] of Object.entries(SHINY_LOOKS)) {
+  const base = ITEMS[id];
+  ITEMS[`${id}_shiny`] = {
+    ...base, name: `${base.name} ${look.label}`, shiny: true, variantOf: id, look,
+    desc: `✨ Variante chromatique (1 chance sur 10). ${base.desc}`,
+  };
+}
+
 export const MAX_EQUIPPED = 2;
 export const isCompanion = (id) => !!ITEMS[id]?.companion;
 

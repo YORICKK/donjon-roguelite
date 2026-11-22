@@ -398,3 +398,9 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
   .roll { margin: 4px 0; }
   .die { width: 46px; height: 46px; font-size: 1.1rem; }
 }
+
+/* Compagnon chromatique : cadre arc-en-ciel animé */
+.item.shiny { position: relative; border-color: transparent; background: linear-gradient(#120d09, #120d09) padding-box, linear-gradient(120deg, #ff5f6d, #ffc371, #6dd5ed, #b06ab3, #ff5f6d) border-box; background-size: 100% 100%, 300% 300%; animation: shinyBorder 3s linear infinite; box-shadow: 0 0 12px -2px rgba(255, 200, 120, 0.55); }
+.item.shiny.selected { box-shadow: 0 0 0 2px var(--gold) inset, 0 0 16px rgba(255, 200, 120, 0.7); }
+@keyframes shinyBorder { to { background-position: 0 0, 300% 0; } }
+@media (prefers-reduced-motion: reduce) { .item.shiny { animation: none; } }

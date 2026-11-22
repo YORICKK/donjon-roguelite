@@ -207,3 +207,18 @@ test('compagnons : pouvoirs en jeu et obtention', () => {
   }
   assert.equal(found, 40, 'nourrir l\'animal donne toujours un compagnon');
 });
+
+test('variantes chromatiques : environ 1 fois sur 10, même pouvoir', async () => {
+  const { rollCompanion } = await import('../src/core/engine.js');
+  let shiny = 0;
+  const N = 4000;
+  for (let k = 0; k < N; k++) if (ITEMS[rollCompanion(new Rng(`s${k}`), 3)].shiny) shiny++;
+  assert.ok(shiny / N > 0.07 && shiny / N < 0.13, `taux chromatique ${(shiny / N * 100).toFixed(1)} %`);
+  for (const [id, it] of Object.entries(ITEMS)) {
+    if (!it.shiny) continue;
+    const base = ITEMS[it.variantOf];
+    assert.equal(it.power, base.power, `${id} : même pouvoir`);
+    assert.equal(it.rarity, base.rarity);
+    assert.equal(it.model, base.model);
+  }
+});

@@ -6,7 +6,7 @@
 //   path (vote d'une porte) -> vote (choix dans la salle) -> result -> [levelup] -> path … -> boss -> over
 import { Rng } from './rng.js';
 import { CLASSES } from '../data/classes.js';
-import { ITEMS, RARITY } from '../data/items.js';
+import { ITEMS, RARITY, SHINY_CHANCE } from '../data/items.js';
 import { getLevel, MAP_EXTRA_WEIGHTS } from '../data/levels.js';
 import { ENEMIES, EVENTS, COMBAT_ACTIONS } from '../data/events.js';
 import { NODE_TYPES, ELITE, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
@@ -468,8 +468,9 @@ export function rollCompanion(rng, levelId, boost = 0) {
   let rarity = rng.weighted(level.lootTable);
   if (boost) rarity = order[Math.min(order.length - 1, order.indexOf(rarity) + boost)];
   for (let r = order.indexOf(rarity); r >= 0; r--) {
-    const pool = Object.keys(ITEMS).filter((id) => ITEMS[id].companion && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
-    if (pool.length) return rng.pick(pool);
+    const pool = Object.keys(ITEMS).filter((id) => ITEMS[id].companion && !ITEMS[id].shiny && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
+    // 1 fois sur 10 : la variante chromatique
+    if (pool.length) { const id = rng.pick(pool); return rng.chance(SHINY_CHANCE) && ITEMS[`${id}_shiny`] ? `${id}_shiny` : id; }
   }
   return 'pet_ecureuil';
 }
@@ -477,6 +478,7 @@ export function rollCompanion(rng, levelId, boost = 0) {
 function gainCompanion(game, rng, lines, boost = 0) {
   const id = rollCompanion(rng, game.levelId, boost);
   game.loot = [...(game.loot || []), id];
+  if (ITEMS[id].shiny) lines.push('✨✨ INCROYABLE : une variante chromatique (1 chance sur 10) ! ✨✨');
   lines.push(`🐾 Nouveau compagnon : ${ITEMS[id].icon} ${ITEMS[id].name} (${RARITY[ITEMS[id].rarity].label}) ! Il pourra vous accompagner lors des prochains runs.`);
 }
 

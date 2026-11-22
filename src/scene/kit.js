@@ -173,6 +173,45 @@ function skinCharacters(gltf) {
   }
 }
 
+// ---------- Variante chromatique d'un compagnon ----------
+// Recolore le pelage (couleurs de sommets) vers une teinte vive, garde les zones sombres (yeux, truffe),
+// et ajoute une légère lueur. Le résultat est mis en cache par compagnon.
+const shinyCache = new Map();
+export function applyShinyLook(obj, look, key) {
+  obj.traverse((o) => {
+    if (!o.isMesh || o.material !== bakedMaterial) return;
+    const cacheKey = `${key}|${o.name}`;
+    if (!shinyCache.has(cacheKey)) {
+      const g = o.geometry.clone();
+      const col = g.attributes.color;
+      const c = new THREE.Color();
+      const hsl = {};
+      for (let i = 0; i < col.count; i++) {
+        c.setRGB(col.getX(i), col.getY(i), col.getZ(i));
+        c.getHSL(hsl);
+        if (hsl.l < 0.08) continue; // yeux, truffe, griffes sombres
+        const h = (look.hue + (hsl.h - 0.08) * 0.25 + 1) % 1;
+        const s = Math.min(1, hsl.s * 0.4 + look.sat * 0.7);
+        const l = Math.min(0.85, hsl.l * look.light + 0.04);
+        c.setHSL(h, s, l);
+        col.setXYZ(i, c.r, c.g, c.b);
+      }
+      col.needsUpdate = true;
+      g.userData.kit = true;
+      const m = bakedMaterial.clone();
+      m.emissive = new THREE.Color(look.glow);
+      m.emissiveIntensity = 0.22;
+      m.roughness = 0.35;
+      m.metalness = 0.25;
+      m.userData.kit = true;
+      shinyCache.set(cacheKey, { g, m });
+    }
+    const { g, m } = shinyCache.get(cacheKey);
+    o.geometry = g;
+    o.material = m;
+  });
+}
+
 /** Copie un modèle ; les personnages (squelette) sont copiés avec leurs os. */
 export function cloneModel(piece) {
   return piece.userData.skinned ? skeletonClone(piece) : piece.clone(true);

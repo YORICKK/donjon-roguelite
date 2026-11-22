@@ -3,7 +3,7 @@
 // plus tard, les props pourront être remplacés par des modèles GLB faits dans Blender.
 import * as THREE from 'three';
 import { ENEMIES } from '../data/events.js';
-import { loadKit, tintKit, Batch, cloneProp, cloneModel, seeded } from './kit.js';
+import { loadKit, tintKit, Batch, cloneProp, cloneModel, applyShinyLook, seeded } from './kit.js';
 import { Animator } from './anim.js';
 import { Fx } from './fx.js';
 import { getTheme, ROOM_DRESSING } from '../data/themes.js';
@@ -190,13 +190,14 @@ export function createDungeonScene(canvas) {
       const petDef = ITEMS[m.pet];
       if (petDef?.companion && kit.pieces[petDef.model]) {
         const pobj = cloneModel(kit.pieces[petDef.model]);
+        if (petDef.look) applyShinyLook(pobj, petDef.look, petDef.model); // variante chromatique
         castShadows(pobj);
         // devant son maître, vers le centre : la caméra plongeante le montre sous l'ennemi
         pobj.position.set(x * 0.6, 0, z - 0.9);
         pobj.rotation.y = obj.rotation.y;
         pobj.scale.setScalar({ useless: 1.8, guard: 0.8 }[petDef.power] || 1);
         partyGroup.add(pobj);
-        pet = { obj: pobj, anim: new Animator(pobj), power: petDef.power, baseY: petDef.power === 'breath' ? 0.55 : 0 };
+        pet = { obj: pobj, anim: new Animator(pobj), power: petDef.power, baseY: petDef.power === 'breath' ? 0.55 : 0, sparkle: petDef.look?.sparkle, sparkleT: Math.random() };
       }
       heroes.push({ ...m, obj, lunge: 0, anim, pet });
     });
@@ -214,6 +215,12 @@ export function createDungeonScene(canvas) {
         h.pet.anim.setBase(walking ? 'walk' : 'idle');
         h.pet.anim.update(dt);
         if (h.pet.baseY) h.pet.obj.position.y = h.pet.baseY + Math.sin(t * 2.2 + i) * 0.12;
+        // variante chromatique : étincelles en continu
+        if (h.pet.sparkle && (h.pet.sparkleT -= dt) <= 0) {
+          h.pet.sparkleT = 0.35 + Math.random() * 0.3;
+          const p = worldPos(h.pet.obj, h.pet.baseY + 0.25 + Math.random() * 0.4).add(new THREE.Vector3((Math.random() - 0.5) * 0.6, 0, (Math.random() - 0.5) * 0.6));
+          fx.burst(p, h.pet.sparkle, { count: 3, speed: 0.4, up: 2, gravity: 0.6, life: 0.9, size: 0.09 });
+        }
       }
       if (h.anim.rigged) {
         h.anim.setBase(walking ? 'walk' : 'idle');
