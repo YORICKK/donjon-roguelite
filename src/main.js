@@ -237,6 +237,7 @@ async function enterLobby(api, code, create) {
   app.waLink = `https://wa.me/?text=${encodeURIComponent(inviteText())}`;
   app.lobby = null;
   app.lobbySig = null;
+  app.lobbyStep = 'class';
   app.screen = 'lobby';
   render();
   const player = { name: app.name, joinedAt: Date.now(), online: true, classId: null, ready: false, equipped: [] };
@@ -412,6 +413,8 @@ const actions = {
     const me = app.lobby.players[app.uid];
     upd({ [`players/${app.uid}/companion`]: me.companion === el.dataset.id ? null : el.dataset.id });
   },
+  nextStep() { app.lobbyStep = 'gear'; render(); ui.querySelectorAll('.screen, .panel').forEach((el) => { el.scrollTop = 0; }); },
+  prevStep() { app.lobbyStep = 'class'; render(); ui.querySelectorAll('.screen, .panel').forEach((el) => { el.scrollTop = 0; }); },
   ready() {
     const me = app.lobby.players[app.uid];
     upd({ [`players/${app.uid}/ready`]: !me.ready });

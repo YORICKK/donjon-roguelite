@@ -137,6 +137,8 @@ export function renderLobby(app, L) {
   const level = getLevel(L.levelId);
   const preview = me.classId ? computeCharacter(me.classId, equipped, [], me.companion || null, me.heroLevel || 1) : null;
   const canShare = typeof navigator.share === 'function';
+  // Deux pages : 1) classe, 2) équipement + compagnon (retour forcé à la 1re si aucune classe)
+  const step = me.classId && app.lobbyStep === 'gear' ? 'gear' : 'class';
 
   return `
   <div class="screen lobby-screen"><div class="panel ornate wide">
@@ -173,6 +175,11 @@ export function renderLobby(app, L) {
         </div>
       </section>
       <section>
+        <div class="steps">
+          <span class="${step === 'class' ? 'on' : 'done'}">1. Classe</span>
+          <span class="${step === 'gear' ? 'on' : ''}">2. Équipement & compagnon</span>
+        </div>
+        ${step === 'class' ? `
         <h3>Votre classe</h3>
         <div class="class-grid">
           ${Object.values(CLASSES).map((c) => `
@@ -186,6 +193,15 @@ export function renderLobby(app, L) {
               <span class="skill">★ <b>${c.skill.name}</b> — ${c.skill.desc}</span>
             </button>`).join('')}
         </div>
+        <div class="action-bar sticky">
+          <button class="primary grow" data-action="nextStep" ${me.classId ? '' : 'disabled'}>${me.classId ? `Suivant : équipement ▶` : 'Choisissez une classe'}</button>
+          <button class="ghost" data-action="leave">Quitter</button>
+        </div>` : `
+        <div class="chosen-class" style="--cc:${CLASSES[me.classId].color}">
+          ${portrait(me.classId, 'lg')}
+          <span class="grow"><span class="name">${CLASSES[me.classId].name}</span> ${heroBar(app, me.classId, true)}<br>
+          <span class="muted small">★ ${CLASSES[me.classId].skill.name} — ${CLASSES[me.classId].skill.desc}</span></span>
+        </div>
         <h3 style="margin-top:14px">Équipement <span class="chip">${equipped.length}/${MAX_EQUIPPED}</span></h3>
         <div class="items">
           ${owned.length ? owned.map((id) => itemChip(id, '', `data-action="equip" data-id="${id}" ${me.ready && !app.solo ? 'disabled' : ''}`, equipped.includes(id))).join('') : '<p class="muted small">Aucun objet. Survivez pour en rapporter !</p>'}
@@ -196,10 +212,11 @@ export function renderLobby(app, L) {
         </div>
         ${preview ? `<div class="statline" style="margin-top:10px"><span class="muted small">Votre héros :</span> ${statLine(preview.stats)}<span class="stat hi">❤️ ${preview.maxHp}</span><span class="stat">🗡 d${preview.dmg}</span></div>` : ''}
         <div class="action-bar sticky">
-          ${app.solo ? '' : `<button class="${me.ready ? '' : 'primary'}" data-action="ready" ${me.classId ? '' : 'disabled'}>${me.ready ? 'Modifier' : 'Prêt !'}</button>`}
+          <button data-action="prevStep" ${me.ready && !app.solo ? 'disabled' : ''}>◀ Classe</button>
+          ${app.solo ? '' : `<button class="${me.ready ? '' : 'primary'}" data-action="ready">${me.ready ? 'Modifier' : 'Prêt !'}</button>`}
           ${isHost ? `<button class="primary" data-action="start" ${allReady ? '' : 'disabled'}>Lancer le run ▶</button>` : '<span class="muted small hint grow">L’hôte lance la partie quand tout le monde est prêt.</span>'}
           <button class="ghost" data-action="leave">Quitter</button>
-        </div>
+        </div>`}
       </section>
     </div>
   </div></div>`;

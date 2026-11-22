@@ -415,3 +415,11 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 .hero-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .hero-row .portrait { width: 36px; height: 36px; }
 .hero-row b { min-width: 70px; }
+
+/* ---------- Salon en deux pages (classe puis équipement) ---------- */
+.steps { display: flex; gap: 6px; margin-bottom: 10px; font-size: 0.8rem; }
+.steps span { flex: 1; text-align: center; padding: 5px 8px; border-radius: 99px; background: rgba(255, 255, 255, 0.05); color: var(--muted); border: 1px solid rgba(107, 82, 51, 0.5); }
+.steps span.on { color: #1a1206; background: var(--gold); border-color: var(--gold); font-weight: 700; }
+.steps span.done { color: var(--gold-hi); }
+.chosen-class { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--cc); background: linear-gradient(180deg, rgba(227, 178, 90, 0.1), rgba(0, 0, 0, 0.35)); box-shadow: 0 0 18px -8px var(--cc); }
+.chosen-class .name { font: 600 1.1rem var(--font-title); color: var(--text); }
