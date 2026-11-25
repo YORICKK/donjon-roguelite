@@ -2,7 +2,7 @@
 import { MAX_EQUIPPED } from './data/items.js';
 import { heroLevel } from './data/heroes.js';
 import { STARTER_WHEEL, WHEEL_SIZE, TILES, ownedTiles } from './data/wheel.js';
-import { animateWheels, settleWheels } from './ui/wheel.js';
+import { animateWheels, settleWheels, spinsDuration, ultTiming } from './ui/wheel.js';
 import { LEVELS, getLevel } from './data/levels.js';
 import { Rng, randomSeed } from './core/rng.js';
 import {
@@ -55,6 +55,12 @@ const pendingRoom = new URLSearchParams(location.search).get('room');
 // ---------- Rendu ----------
 function render() {
   const L = app.lobby;
+  // Pendant que les roues tournent, on ne redessine pas l'écran (sinon l'animation serait coupée,
+  // par exemple quand la sauvegarde de fin de run met à jour le salon) : on redessinera à la fin.
+  if (app.spinning && app.screen === 'lobby' && L?.game && app.spinning === `${L.seed}|${L.game.roomIndex}|${L.game.round}`) {
+    app.renderPending = true;
+    return;
+  }
   let html;
   if (app.screen === 'name') html = renderName(app, pendingRoom);
   else if (app.screen === 'menu') html = renderMenu(app);
@@ -110,10 +116,9 @@ function afterRender() {
           el?.querySelectorAll('.ult-spin').forEach((u) => { u.classList.remove('hidden'); u.classList.add('appear'); });
           el?.querySelector('.ult-spin')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
           buzz([30, 30, 30, 30, 80]);
-          const many = Math.max(...ultSpins.map((u) => u.picks.length)) > 4;
+          const timing = ultTiming(Math.max(...ultSpins.map((u) => u.picks.length)));
           setTimeout(() => animateWheels(el, ultSpins, {
-            duration: many ? 750 : 1300,
-            gap: many ? 180 : 400,
+            ...timing,
             onStep: (uid, k) => {
               const g2 = ui.querySelector(`.spins [data-wheel="${CSS.escape(uid)}"]`)?.closest('.spin')?.querySelectorAll('[data-got]')[k];
               g2?.classList.remove('hidden');
@@ -352,7 +357,8 @@ setInterval(async () => {
     next.resultAt = Date.now();
     await upd({ game: next });
   } else if (g.phase === 'result') {
-    if (Date.now() - (g.resultAt || 0) < RESULT_AUTO_MS) return;
+    if (Date.now() - (g.resultAt || 0) < RESULT_AUTO_MS + spinsDuration(g.lastResult)) return;
+    if (app.spinning) return; // la roue tourne encore ici
     resolving = key;
     await doContinue();
   }
@@ -529,7 +535,7 @@ const actions = {
     buzz(15);
     upd({ [`game/votes/${app.uid}`]: el.dataset.id });
   },
-  continue() { resolving = `${app.lobby.seed}|${app.lobby.game.roomIndex}|${app.lobby.game.round}|result`; doContinue(); },
+  continue() { if (app.spinning) return; resolving = `${app.lobby.seed}|${app.lobby.game.roomIndex}|${app.lobby.game.round}|result`; doContinue(); },
   relobby() {
     const patch = { status: 'lobby', game: null, seed: randomSeed() };
     for (const uid of Object.keys(app.lobby.players || {})) patch[`players/${uid}/ready`] = false;

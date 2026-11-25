@@ -418,8 +418,14 @@ function renderResult(app, L, isHost) {
     ${r.spins ? spinsBlock(L.game, L.players || {}, r, app.uid, app.animatedResult !== `${L.seed}|${L.game.roomIndex}|${L.game.round}` || app.spinning === `${L.seed}|${L.game.roomIndex}|${L.game.round}`) : ''}
     <ul class="lines" data-lines>${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
     <div class="action-bar">
-      ${isHost ? '<button class="primary grow" data-action="continue">Continuer ▶</button>' : '<span class="muted small">En attente de l’hôte…</span>'}
+      ${isHost ? `<button class="primary grow" data-action="continue" ${wheelsTurning(app, L) ? 'disabled' : ''}>Continuer ▶</button>` : '<span class="muted small">En attente de l’hôte…</span>'}
     </div>`;
+}
+
+/** Les roues du dernier résultat sont-elles encore en train de tourner sur cet écran ? */
+function wheelsTurning(app, L) {
+  const key = `${L.seed}|${L.game.roomIndex}|${L.game.round}`;
+  return !!L.game.lastResult?.spins && (app.animatedResult !== key || app.spinning === key);
 }
 
 function renderOver(app, L) {

@@ -85,6 +85,24 @@ function targetAngle(current, idx, turns) {
   return target;
 }
 
+// Rythme des animations (partagé avec l'hôte, qui attend la fin des roues avant de passer à la suite)
+export const SPIN_TIMING = { main: { duration: 1700, gap: 450 }, ultDelay: 700, ultFast: { duration: 750, gap: 180 }, ultSlow: { duration: 1300, gap: 400 } };
+
+/** Rythme de la roue d'ulti selon son nombre de lancers. */
+export const ultTiming = (maxPicks) => (maxPicks > 4 ? SPIN_TIMING.ultFast : SPIN_TIMING.ultSlow);
+
+/** Durée totale (ms) de l'animation des roues d'un résultat (roue principale puis roues d'ulti). */
+export function spinsDuration(result) {
+  const raw = Object.values(result?.spins || {});
+  if (!raw.length) return 0;
+  const step = (t) => t.duration + 60 + t.gap;
+  const mainRounds = Math.max(0, ...raw.map((x) => Object.values(x.picks || {}).length));
+  let ms = mainRounds * step(SPIN_TIMING.main);
+  const ultRounds = Math.max(0, ...raw.flatMap((x) => Object.values(x.ults || {}).map((u) => Object.values(u.picks || {}).length)));
+  if (ultRounds) ms += SPIN_TIMING.ultDelay + ultRounds * step(ultTiming(ultRounds));
+  return ms;
+}
+
 /**
  * Anime les lancers : spins = [{ uid, picks: [index…] }]. Toutes les roues tournent en même temps,
  * un lancer après l'autre. Appelle onStep(uid, k, idx) à chaque arrêt et onDone() à la fin.
