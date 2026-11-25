@@ -1,6 +1,8 @@
 // Contrôleur de l'application : écrans, salon, boucle de l'hôte, sauvegarde du butin.
 import { MAX_EQUIPPED } from './data/items.js';
 import { heroLevel } from './data/heroes.js';
+import { STARTER_WHEEL, WHEEL_SIZE, TILES, ownedTiles } from './data/wheel.js';
+import { animateWheels, settleWheels } from './ui/wheel.js';
 import { LEVELS, getLevel } from './data/levels.js';
 import { Rng, randomSeed } from './core/rng.js';
 import {
@@ -10,7 +12,7 @@ import {
 import { profiles, multiLobbies, soloLobbies, makeCode, emptyProfile, mergeProfiles } from './net/index.js';
 import { createDungeonScene } from './scene/dungeon.js';
 import { toast } from './ui/dom.js';
-import { renderName, renderMenu, renderInventory, renderLobby, renderGame } from './ui/views.js';
+import { renderName, renderMenu, renderInventory, renderLobby, renderGame, currentWheel } from './ui/views.js';
 import { CLASSES } from './data/classes.js';
 import { actionFor } from './scene/anim.js';
 
@@ -73,8 +75,37 @@ function render() {
 function afterRender() {
   const g = app.lobby?.status === 'playing' ? app.lobby.game : null;
   const key = g ? `${app.lobby.seed}|${g.roomIndex}|${g.round}` : null;
+  const wheelsEl = ui.querySelector('.spins');
   const die = ui.querySelector('[data-die]');
-  if (die && g?.lastResult) {
+  if (wheelsEl && g?.lastResult?.spins) {
+    const spins = Object.values(g.lastResult.spins).map((x) => ({ uid: x.uid, picks: Object.values(x.picks || {}) }));
+    const lines = ui.querySelector('[data-lines]');
+    if (app.animatedResult !== key) {
+      app.animatedResult = key;
+      app.spinning = key;
+      lines.style.visibility = 'hidden';
+      wheelsEl.querySelectorAll('[data-got]').forEach((x) => x.classList.add('hidden'));
+      animateWheels(wheelsEl, spins, {
+        onStep: (uid, k) => {
+          const el = ui.querySelector(`.spins [data-wheel="${CSS.escape(uid)}"]`)?.closest('.spin')?.querySelectorAll('[data-got]')[k];
+          el?.classList.remove('hidden');
+          el?.classList.add('pop');
+          if (uid === app.uid) buzz(15);
+        },
+        onDone: () => {
+          if (app.spinning !== key) return;
+          app.spinning = null;
+          render(); // affiche les lignes et les PV de l'ennemi
+          reactScene(g);
+        },
+      });
+    } else if (app.spinning !== key) settleWheels(wheelsEl, spins);
+    else { // re-rendu pendant l'animation : on montre le résultat final
+      app.spinning = null;
+      settleWheels(wheelsEl, spins);
+      reactScene(g);
+    }
+  } else if (die && g?.lastResult) {
     const finalCls = die.dataset.success === 'true' ? 'success' : 'fail';
     if (app.animatedResult !== key) {
       app.animatedResult = key;
@@ -340,6 +371,22 @@ async function maybeSaveRun() {
   try { await profiles.save(app.uid, app.profile); } catch (e) { console.error(e); toast('Sauvegarde impossible : ' + e.message); }
 }
 
+// ---------- Salon : étapes et roue ----------
+function goStep(step) {
+  app.lobbyStep = step;
+  render();
+  ui.querySelectorAll('.screen, .panel').forEach((el) => { el.scrollTop = 0; });
+}
+
+/** Enregistre la roue d'une classe dans le profil et la transmet au salon. */
+function saveWheel(classId, wheel) {
+  app.profile.wheels = { ...(app.profile.wheels || {}), [classId]: wheel };
+  upd({ [`players/${app.uid}/wheel`]: wheel });
+  render();
+  clearTimeout(app.wheelSaveT);
+  app.wheelSaveT = setTimeout(() => profiles.save(app.uid, app.profile).catch((e) => console.error(e)), 600);
+}
+
 // ---------- Actions ----------
 const actions = {
   async solo() {
@@ -398,7 +445,12 @@ const actions = {
     catch (e) { if (e.name !== 'AbortError') actions.copy(); }
   },
   class(el) {
-    upd({ [`players/${app.uid}/classId`]: el.dataset.id, [`players/${app.uid}/heroLevel`]: heroLevel(app.profile.heroXp?.[el.dataset.id] || 0) });
+    const id = el.dataset.id;
+    upd({
+      [`players/${app.uid}/classId`]: id,
+      [`players/${app.uid}/heroLevel`]: heroLevel(app.profile.heroXp?.[id] || 0),
+      [`players/${app.uid}/wheel`]: currentWheel(app, id),
+    });
   },
   equip(el) {
     const me = app.lobby.players[app.uid];
@@ -413,8 +465,27 @@ const actions = {
     const me = app.lobby.players[app.uid];
     upd({ [`players/${app.uid}/companion`]: me.companion === el.dataset.id ? null : el.dataset.id });
   },
-  nextStep() { app.lobbyStep = 'gear'; render(); ui.querySelectorAll('.screen, .panel').forEach((el) => { el.scrollTop = 0; }); },
-  prevStep() { app.lobbyStep = 'class'; render(); ui.querySelectorAll('.screen, .panel').forEach((el) => { el.scrollTop = 0; }); },
+  nextStep() { goStep(app.lobbyStep === 'wheel' ? 'gear' : 'wheel'); },
+  prevStep() { goStep(app.lobbyStep === 'gear' ? 'wheel' : 'class'); },
+  // ---------- Éditeur de roue ----------
+  slot(el) { app.wheelSlot = Number(el.dataset.i); render(); },
+  tile(el) {
+    const me = app.lobby.players[app.uid];
+    const wheel = currentWheel(app, me.classId);
+    const slot = app.wheelSlot || 0;
+    const id = el.dataset.id;
+    const owned = ownedTiles(app.profile.inventory || {});
+    const used = wheel.filter((x, i) => x === id && i !== slot).length;
+    if (!TILES[id] || used >= owned[id]) { toast('Plus d’exemplaire de cette tuile.'); return; }
+    wheel[slot] = id;
+    app.wheelSlot = (slot + 1) % WHEEL_SIZE;
+    saveWheel(me.classId, wheel);
+  },
+  resetWheel() {
+    const me = app.lobby.players[app.uid];
+    app.wheelSlot = 0;
+    saveWheel(me.classId, [...STARTER_WHEEL]);
+  },
   ready() {
     const me = app.lobby.players[app.uid];
     upd({ [`players/${app.uid}/ready`]: !me.ready });

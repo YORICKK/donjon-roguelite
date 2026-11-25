@@ -1,6 +1,8 @@
 // Objets conservés entre les parties. bonus : stats (for/dex/int/sag), hp (PV max), dmg (dégâts).
 // tier : niveau de donjon minimum où l'objet peut tomber. Les tiers élevés justifient
 // de farmer les premiers niveaux pour survivre aux suivants.
+import { TILES } from './wheel.js';
+
 export const RARITY = {
   commun: { label: 'Commun', color: '#bdc3c7', rank: 0 },
   rare: { label: 'Rare', color: '#3498db', rank: 1 },
@@ -64,7 +66,12 @@ for (const [id, look] of Object.entries(SHINY_LOOKS)) {
   };
 }
 
+// ---------- Tuiles de roue : conservées comme des objets (voir data/wheel.js) ----------
+for (const [id, t] of Object.entries(TILES)) if (!t.starter) ITEMS[id] = t;
+
 export const MAX_EQUIPPED = 2;
+/** Objet d'équipement (ni compagnon ni tuile de roue). */
+export const isGear = (id) => !!ITEMS[id] && !ITEMS[id].companion && !ITEMS[id].tile;
 export const isCompanion = (id) => !!ITEMS[id]?.companion;
 
 export function describeBonus(bonus = {}) {

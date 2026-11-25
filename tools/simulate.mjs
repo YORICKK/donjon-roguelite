@@ -14,6 +14,7 @@ import { LEVELS } from '../src/data/levels.js';
 import { ENEMIES } from '../src/data/events.js';
 import { BOONS } from '../src/data/run.js';
 import { heroLevel } from '../src/data/heroes.js';
+import { TILES, WHEEL_SIZE, STARTER_WHEEL, ownedTiles } from '../src/data/wheel.js';
 
 const MAIN_STAT = { guerrier: 'for', mage: 'int', voleur: 'dex', clerc: 'sag' };
 
@@ -81,22 +82,9 @@ function chooseVote(g, players, choices) {
     if (hp < 0.2 && has('fuir') && !e.boss) return 'fuir';
     const skill = allowed.find((c) => c.skill);
     if (skill && /Soin/.test(skill.label) && hp < 0.5) return skill.id;
-    if (g.enemy.intent === 'heavy' && has('defendre')) {
-      const pv = previewChoice(g, players, has('defendre'));
-      if (pv && pv.chance >= 0.5) return 'defendre';
-    }
     if (skill && !/Soin/.test(skill.label) && (g.enemy.hp > 8 || e.boss)) return skill.id;
     if (has('use:bombe') && g.enemy.hp > 10) return 'use:bombe';
-    // meilleure espérance de dégâts
-    let best = null, bestV = -1;
-    for (const c of allowed) {
-      if (!['attaque', 'sournois', 'repousser'].includes(c.id)) continue;
-      const pv = previewChoice(g, players, c);
-      const mult = c.id === 'attaque' ? 1 : 1.5;
-      const v = (pv?.chance || 0) * mult;
-      if (v > bestV) { bestV = v; best = c.id; }
-    }
-    return best || allowed[0].id;
+    return has('roue') ? 'roue' : allowed[0].id;
   }
   // Événement : espérance de gain
   const ev = getEvent(room);
@@ -145,18 +133,45 @@ function bestGear(classId, owned) {
     const b = ITEMS[id].bonus || {};
     return (b[st] || 0) * 3 + (b.hp || 0) * 0.5 + (b.dmg || 0) * 1.5 + ((b.for || 0) + (b.dex || 0) + (b.int || 0) + (b.sag || 0) - (b[st] || 0)) * 0.6;
   };
-  return owned.filter((id) => !ITEMS[id].companion).sort((a, b) => score(b) - score(a)).slice(0, 2);
+  return owned.filter((id) => !ITEMS[id].companion && !ITEMS[id].tile).sort((a, b) => score(b) - score(a)).slice(0, 2);
 }
+/** Valeur approximative d'une tuile pour une classe (dégâts espérés ; soin, garde et spéciales estimés). */
+function tileValue(classId, id) {
+  const t = TILES[id];
+  const st = t.stat ? Math.max(0, CLASSES[classId].stats[t.stat]) : 0;
+  const amount = (t.base || 0) + (t.mult || 1) * st;
+  switch (t.kind) {
+    case 'dmg': return amount * (t.hits || 1);
+    case 'smite': return amount + t.heal * 0.6;
+    case 'heal': return amount * 0.6;
+    case 'guard': return 4 + (t.base || 0) * 0.6;
+    case 'poison': return t.base * 2.5;
+    case 'gold': return 3;
+    case 'jackpot': return 9;
+    case 'respin': return 8;
+    default: return 0;
+  }
+}
+export function bestWheel(classId, inventory) {
+  const owned = ownedTiles(inventory);
+  const pool = [];
+  for (const [id, n] of Object.entries(owned)) for (let k = 0; k < Math.min(n, WHEEL_SIZE); k++) pool.push(id);
+  pool.sort((a, b) => tileValue(classId, b) - tileValue(classId, a));
+  const wheel = pool.slice(0, WHEEL_SIZE);
+  while (wheel.length < WHEEL_SIZE) wheel.push('t_rate');
+  return wheel;
+}
+
 const PET_RANK = { pet_dragon: 5, pet_ours: 4, pet_loup: 3, pet_chien: 2, pet_ecureuil: 1 };
 function bestPet(owned) {
   const pets = owned.filter((id) => ITEMS[id].companion).map((id) => ITEMS[id].variantOf || id);
   return pets.sort((a, b) => PET_RANK[b] - PET_RANK[a])[0] || null;
 }
 
-function winRate(classId, levelId, equipped, companion, N, tag) {
+export function winRate(classId, levelId, equipped, companion, N, tag, wheel = STARTER_WHEEL, heroLv = 1) {
   let wins = 0;
   for (let k = 0; k < N; k++) {
-    const players = { solo: { name: 'Solo', classId, equipped, companion } };
+    const players = { solo: { name: 'Solo', classId, equipped, companion, wheel, heroLevel: heroLv } };
     if (playRun(`${tag}-${classId}-${levelId}-${k}`, levelId, players).outcome === 'victory') wins++;
   }
   return wins / N;
@@ -165,22 +180,23 @@ function winRate(classId, levelId, equipped, companion, N, tag) {
 // ---------- Campagne complète ----------
 export function campaign(classId, seed, maxRuns = 400, keepXp = true) {
   const owned = new Set();
+  const inventory = {};
   let xp = 0;
   let unlocked = 1;
   const runsToClear = {};
   for (let run = 0; run < maxRuns && unlocked <= LEVELS.length; run++) {
     // stratégie : on tente le niveau le plus haut débloqué
     const level = unlocked;
-    const players = { solo: { name: 'Solo', classId, equipped: bestGear(classId, [...owned]), companion: bestPet([...owned]), heroLevel: keepXp ? heroLevel(xp) : 1 } };
+    const players = { solo: { name: 'Solo', classId, equipped: bestGear(classId, [...owned]), companion: bestPet([...owned]), heroLevel: keepXp ? heroLevel(xp) : 1, wheel: bestWheel(classId, inventory) } };
     const r = playRun(`${seed}-${run}`, level, players);
-    for (const id of r.loot) owned.add(id);
+    for (const id of r.loot) { owned.add(id); inventory[id] = (inventory[id] || 0) + 1; }
     xp += r.xp;
     if (r.outcome === 'victory') {
       runsToClear[level] = run + 1;
       unlocked = level + 1;
     }
   }
-  return { runsToClear, heroLevel: heroLevel(xp), gear: bestGear(classId, [...owned]), pet: bestPet([...owned]), owned: owned.size };
+  return { runsToClear, heroLevel: heroLevel(xp), wheel: bestWheel(classId, inventory), gear: bestGear(classId, [...owned]), pet: bestPet([...owned]), owned: owned.size };
 }
 
 // ---------- Rapport (seulement si lancé directement) ----------
@@ -192,19 +208,22 @@ const BEST = {
   voleur: ['cape_ombre', 'epee_runique'], clerc: ['couronne_liche', 'epee_runique'],
 };
 const N = Number(process.argv[2]) || 300;
+const RANK = { commun: 0, rare: 1, epique: 2, legendaire: 3 };
+// inventaire fictif : toutes les tuiles jusqu'à une rareté donnée, n exemplaires
+const inv = (max, n = 1) => Object.fromEntries(Object.values(TILES).filter((t) => !t.starter && RANK[t.rarity] <= max).map((t) => [t.id, n]));
 console.log(`\nTaux de victoire SOLO (${N} runs par case) — bot qui joue raisonnablement\n`);
-console.log('Classe     Équipement                    Niv 1   Niv 2   Niv 3');
+console.log('Classe     Roue / équipement             Niv 1   Niv 2   Niv 3');
 for (const classId of Object.keys(CLASSES)) {
   const configs = [
-    ['aucun', [], null],
-    ['2 objets rares', bestGear(classId, ['gantelets_fer', 'grimoire_use', 'anneau_vigueur', 'bottes_cuir', 'amulette_os']), null],
-    ['meilleurs objets', BEST[classId], null],
-    ['meilleurs + ours', BEST[classId], 'pet_ours'],
-    ['meilleurs + dragonnet', BEST[classId], 'pet_dragon'],
+    ['roue de départ', STARTER_WHEEL, [], 1],
+    ['tuiles communes', bestWheel(classId, inv(0)), [], 1],
+    ['tuiles rares, héros niv 3', bestWheel(classId, inv(1)), [], 3],
+    ['épiques + objets, niv 5', bestWheel(classId, inv(2)), BEST[classId], 5],
+    ['légendaires + objets, niv 8', bestWheel(classId, inv(3, 2)), BEST[classId], 8],
   ];
-  for (const [label, eq, pet] of configs) {
-    const rates = LEVELS.map((l) => winRate(classId, l.id, eq, pet, N, label));
-    console.log(`${CLASSES[classId].name.padEnd(10)} ${label.padEnd(28)} ${rates.map(pct).join('   ')}`);
+  for (const [label, wheel, eq, hl] of configs) {
+    const rates = LEVELS.map((l) => winRate(classId, l.id, eq, null, N, label, wheel, hl));
+    console.log(`${CLASSES[classId].name.padEnd(10)} ${label.padEnd(29)} ${rates.map(pct).join('   ')}`);
   }
 }
 

@@ -251,6 +251,6 @@ export function actionFor(result, classSkillId) {
   if (result.choiceId?.startsWith('skill:')) {
     return { coup_puissant: 'attack', boule_de_feu: 'cast', mains_agiles: 'stab', soin_de_groupe: 'pray' }[classSkillId] || 'attack';
   }
-  const stat = result.roll?.stat;
+  const stat = result.roll?.stat || result.stat;
   return { for: 'attack', int: 'cast', dex: 'stab', sag: 'pray' }[stat] || null;
 }

@@ -32,6 +32,7 @@ export function mergeProfiles(a, b) {
     ...a,
     inventory,
     heroXp,
+    wheels: { ...(b.wheels || {}), ...(a.wheels || {}) },
     unlockedLevel: Math.max(a.unlockedLevel || 1, b.unlockedLevel || 1),
     runs: (a.runs || 0) + (b.runs || 0),
     wins: (a.wins || 0) + (b.wins || 0),

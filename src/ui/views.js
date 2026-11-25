@@ -1,6 +1,8 @@
 // Gabarits HTML des écrans. Fonctions pures : (app, état) -> chaîne HTML.
 import { CLASSES, STAT_LABELS } from '../data/classes.js';
-import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus } from '../data/items.js';
+import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus, isGear } from '../data/items.js';
+import { TILES, WHEEL_SIZE, ownedTiles, sanitizeWheel, tileColor } from '../data/wheel.js';
+import { wheelSvg } from './wheel.js';
 import { LEVELS, getLevel } from '../data/levels.js';
 import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
 import { NODE_TYPES, CONSUMABLES, BOONS, XP_LEVELS, STATUS, ELITE } from '../data/run.js';
@@ -32,7 +34,7 @@ export function itemChip(id, extra = '', attrs = '', selected = false) {
   if (!it) return '';
   const r = RARITY[it.rarity];
   return `<button class="item ${selected ? 'selected' : ''} ${it.shiny ? 'shiny' : ''}" style="--rc:${r.color}" ${attrs} title="${esc(r.label)}${it.shiny ? ' — variante chromatique' : ''}">
-    <span class="ico">${it.icon}${it.shiny ? '✨' : ''}</span><span>${esc(it.name)}<br><span class="muted small">${esc(it.companion ? it.desc : describeBonus(it.bonus))}</span></span>${extra}</button>`;
+    <span class="ico">${it.icon}${it.shiny ? '✨' : ''}</span><span>${esc(it.name)}<br><span class="muted small">${esc(it.companion ? it.desc : it.tile ? it.text : describeBonus(it.bonus))}</span></span>${extra}</button>`;
 }
 
 const G_LOGO = '<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.6 5.4 2.7 13.3l7.9 6.1C12.5 13.6 17.8 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.2 5.3-4.6 7l7.4 5.7c4.3-4 6.9-9.9 6.9-17.2z"/><path fill="#FBBC05" d="M10.6 28.6c-.5-1.4-.8-3-.8-4.6s.3-3.2.8-4.6l-7.9-6.1C1 16.6 0 20.2 0 24s1 7.4 2.7 10.7l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.4-5.7c-2.1 1.4-4.8 2.3-8.5 2.3-6.2 0-11.5-4.1-13.4-9.9l-7.9 6.1C6.6 42.6 14.6 48 24 48z"/></svg>';
@@ -106,13 +108,17 @@ export function renderMenu(app) {
 export function renderInventory(app) {
   const entries = Object.entries(app.profile.inventory || {}).filter(([id, n]) => n > 0 && ITEMS[id])
     .sort((a, b) => RARITY[ITEMS[b[0]].rarity].rank - RARITY[ITEMS[a[0]].rarity].rank);
-  const items = entries.filter(([id]) => !ITEMS[id].companion);
+  const items = entries.filter(([id]) => isGear(id));
+  const tiles = entries.filter(([id]) => ITEMS[id].tile);
   const pets = entries.filter(([id]) => ITEMS[id].companion);
   return `
   <div class="screen"><div class="panel ornate menu wide" style="text-align:left;max-width:640px">
     <h2>🎒 Inventaire</h2>
     <p class="muted small">Conservé entre les parties. Équipez jusqu'à ${MAX_EQUIPPED} objets avant chaque run.</p>
     <div class="items">${items.length ? items.map(([id, n]) => itemChip(id, `<span class="chip">×${n}</span>`)).join('') : '<p class="muted">Rien pour le moment. Ouvrez des coffres !</p>'}</div>
+    <h3 style="margin-top:14px">🎡 Tuiles de roue</h3>
+    <p class="muted small">Gagnées dans les donjons. Placez-les sur la roue de chaque classe dans le salon pour remplacer les « Raté ».</p>
+    <div class="items">${tiles.length ? tiles.map(([id, n]) => tileChip(id, `<span class="chip">×${n}</span>`)).join('') : '<p class="muted">Aucune tuile pour le moment.</p>'}</div>
     <h3 style="margin-top:14px">⭐ Héros</h3>
     <p class="muted small">L’XP gagnée pendant un run, même perdu, reste acquise par la classe jouée et débloque des bonus permanents.</p>
     <div class="heroes">${Object.values(CLASSES).map((c) => `<div class="hero-row">${portrait(c.id)}<b>${c.name}</b>${heroBar(app, c.id)}</div>`).join('')}</div>
@@ -130,7 +136,7 @@ export function renderLobby(app, L) {
   const isHost = L.hostUid === app.uid;
   const allReady = Object.values(players).filter((p) => p.online !== false).every((p) => (p.ready || app.solo) && p.classId);
   const ownedAll = Object.entries(app.profile.inventory || {}).filter(([id, n]) => n > 0 && ITEMS[id]).map(([id]) => id);
-  const owned = ownedAll.filter((id) => !ITEMS[id].companion);
+  const owned = ownedAll.filter((id) => isGear(id));
   const ownedPets = ownedAll.filter((id) => ITEMS[id].companion);
   const equipped = me.equipped || [];
   const maxLevel = isHost ? app.profile.unlockedLevel || 1 : LEVELS.length;
@@ -138,7 +144,7 @@ export function renderLobby(app, L) {
   const preview = me.classId ? computeCharacter(me.classId, equipped, [], me.companion || null, me.heroLevel || 1) : null;
   const canShare = typeof navigator.share === 'function';
   // Deux pages : 1) classe, 2) équipement + compagnon (retour forcé à la 1re si aucune classe)
-  const step = me.classId && app.lobbyStep === 'gear' ? 'gear' : 'class';
+  const step = me.classId && ['wheel', 'gear'].includes(app.lobbyStep) ? app.lobbyStep : 'class';
 
   return `
   <div class="screen lobby-screen"><div class="panel ornate wide">
@@ -177,7 +183,8 @@ export function renderLobby(app, L) {
       <section>
         <div class="steps">
           <span class="${step === 'class' ? 'on' : 'done'}">1. Classe</span>
-          <span class="${step === 'gear' ? 'on' : ''}">2. Équipement & compagnon</span>
+          <span class="${step === 'wheel' ? 'on' : step === 'gear' ? 'done' : ''}">2. Roue</span>
+          <span class="${step === 'gear' ? 'on' : ''}">3. Équipement</span>
         </div>
         ${step === 'class' ? `
         <h3>Votre classe</h3>
@@ -194,9 +201,9 @@ export function renderLobby(app, L) {
             </button>`).join('')}
         </div>
         <div class="action-bar sticky">
-          <button class="primary grow" data-action="nextStep" ${me.classId ? '' : 'disabled'}>${me.classId ? `Suivant : équipement ▶` : 'Choisissez une classe'}</button>
+          <button class="primary grow" data-action="nextStep" ${me.classId ? '' : 'disabled'}>${me.classId ? `Suivant : la roue ▶` : 'Choisissez une classe'}</button>
           <button class="ghost" data-action="leave">Quitter</button>
-        </div>` : `
+        </div>` : step === 'wheel' ? wheelEditor(app, me) : `
         <div class="chosen-class" style="--cc:${CLASSES[me.classId].color}">
           ${portrait(me.classId, 'lg')}
           <span class="grow"><span class="name">${CLASSES[me.classId].name}</span> ${heroBar(app, me.classId, true)}<br>
@@ -212,7 +219,7 @@ export function renderLobby(app, L) {
         </div>
         ${preview ? `<div class="statline" style="margin-top:10px"><span class="muted small">Votre héros :</span> ${statLine(preview.stats)}<span class="stat hi">❤️ ${preview.maxHp}</span><span class="stat">🗡 d${preview.dmg}</span></div>` : ''}
         <div class="action-bar sticky">
-          <button data-action="prevStep" ${me.ready && !app.solo ? 'disabled' : ''}>◀ Classe</button>
+          <button data-action="prevStep" ${me.ready && !app.solo ? 'disabled' : ''}>◀ Roue</button>
           ${app.solo ? '' : `<button class="${me.ready ? '' : 'primary'}" data-action="ready">${me.ready ? 'Modifier' : 'Prêt !'}</button>`}
           ${isHost ? `<button class="primary" data-action="start" ${allReady ? '' : 'disabled'}>Lancer le run ▶</button>` : '<span class="muted small hint grow">L’hôte lance la partie quand tout le monde est prêt.</span>'}
           <button class="ghost" data-action="leave">Quitter</button>
@@ -252,6 +259,10 @@ export function renderGame(app, L) {
   const level = getLevel(g.levelId);
   const isHost = L.hostUid === app.uid;
   const votes = g.votes || {};
+  // pendant que les roues tournent, on n'affiche pas encore les PV restants de l'ennemi
+  const spinKey = `${L.seed}|${g.roomIndex}|${g.round}`;
+  const holding = g.lastResult?.spins && g.lastResult.enemyBefore != null && (app.animatedResult !== spinKey || app.spinning === spinKey);
+  const shownHp = g.enemy ? (holding ? Math.max(0, g.lastResult.enemyBefore) : g.enemy.hp) : 0;
   const voting = g.phase === 'vote' || g.phase === 'path';
   const picking = g.phase === 'levelup';
 
@@ -304,8 +315,8 @@ export function renderGame(app, L) {
     body = `
       <div class="kicker"><span class="ico">${icon}</span> Étage ${floorNow}/${floors} · ${room.hidden ? 'Inconnu → ' : ''}${ROOM_TYPE_LABELS[room.type] || NODE_TYPES[room.type]?.label}</div>
       <h2>${title}</h2>
-      ${enemy ? `<div class="hp enemy"><div style="width:${(100 * g.enemy.hp) / g.enemy.maxHp}%"></div></div>
-        <div class="enemy-line"><span>❤️ ${g.enemy.hp}/${g.enemy.maxHp}</span>${g.enemy.rage ? `<span>😡 +${g.enemy.rage}</span>` : ''}</div>
+      ${enemy ? `<div class="hp enemy"><div style="width:${(100 * shownHp) / g.enemy.maxHp}%"></div></div>
+        <div class="enemy-line"><span>❤️ ${shownHp}/${g.enemy.maxHp}</span>${g.enemy.rage ? `<span>😡 +${g.enemy.rage}</span>` : ''}</div>
         ${g.phase === 'vote' ? intentLine(g, level) : ''}` : ''}
       ${shop ? `<p class="gold-line">💰 ${g.gold} pièces d'or</p>` : ''}
       ${g.phase === 'vote' && g.round === 0 && g.intro?.length ? `<ul class="lines intro">${g.intro.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
@@ -404,6 +415,7 @@ function renderResult(app, L, isHost) {
         <div class="small muted">d20 ${roll.d20} ${fmtMod(roll.mod)} ${STAT_LABELS[roll.stat]} = <b>${roll.total}</b> contre DD ${roll.dc}</div>
       </div>
     </div>` : ''}
+    ${r.spins ? spinsBlock(L.game, L.players || {}, r, app.uid) : ''}
     <ul class="lines" data-lines>${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
     <div class="action-bar">
       ${isHost ? '<button class="primary grow" data-action="continue">Continuer ▶</button>' : '<span class="muted small">En attente de l’hôte…</span>'}
@@ -433,4 +445,67 @@ function renderOver(app, L) {
       ${isHost ? '<button class="primary grow" data-action="relobby">Nouveau run</button>' : ''}
       <button data-action="leave">Menu</button>
     </div>`;
+}
+
+// ---------- Roue de combat ----------
+export function tileChip(id, extra = '', attrs = '', selected = false) {
+  const t = TILES[id];
+  if (!t) return '';
+  const r = RARITY[t.rarity];
+  return `<button class="item tile ${selected ? 'selected' : ''}" style="--rc:${r.color};--tc:${tileColor(id)}" ${attrs} title="${esc(r.label)} — ${esc(t.text)}">
+    <span class="ico">${t.icon}</span><span>${esc(t.name)}<br><span class="muted small">${esc(t.text)}</span></span>${extra}</button>`;
+}
+
+/** Roue de la classe choisie (profil), corrigée selon les tuiles possédées. */
+export function currentWheel(app, classId) {
+  return sanitizeWheel(app.profile.wheels?.[classId] || [], app.profile.inventory || {});
+}
+
+function wheelEditor(app, me) {
+  const wheel = currentWheel(app, me.classId);
+  const slot = Math.min(WHEEL_SIZE - 1, Math.max(0, app.wheelSlot || 0));
+  const owned = ownedTiles(app.profile.inventory || {});
+  const used = wheel.reduce((m, id) => ({ ...m, [id]: (m[id] || 0) + 1 }), {});
+  const order = { commun: 0, rare: 1, epique: 2, legendaire: 3 };
+  const ids = Object.keys(owned).filter((id) => TILES[id]).sort((a, b) => order[TILES[b].rarity] - order[TILES[a].rarity] || TILES[a].name.localeCompare(TILES[b].name));
+  const locked = me.ready && !app.solo ? 'disabled' : '';
+  const cur = TILES[wheel[slot]];
+  return `
+    <div class="wheel-editor">
+      <div class="wheel-stage">${wheelSvg(wheel, { size: 230, selected: slot, editable: !locked, uid: 'editor' })}</div>
+      <div class="wheel-side">
+        <h3>Votre roue <span class="chip">${CLASSES[me.classId].name}</span></h3>
+        <p class="muted small">À chaque attaque, la roue tourne 2 fois. Touchez une case, puis une tuile pour l'y placer. Toutes les cases ont la même taille : plus une tuile est présente, plus elle tombe souvent.</p>
+        <p class="small">Case ${slot + 1} : <b>${cur.icon} ${esc(cur.name)}</b> <span class="muted">— ${esc(cur.text)}</span></p>
+        <div class="items tiles-pick">
+          ${ids.map((id) => {
+            const left = owned[id] === Infinity ? '∞' : owned[id] - (used[id] || 0);
+            const can = !locked && (left === '∞' || left > 0) && wheel[slot] !== id;
+            return tileChip(id, `<span class="chip">${left === '∞' ? '∞' : `${left}/${owned[id]}`}</span>`, `data-action="tile" data-id="${id}" ${can ? '' : 'disabled'}`, wheel[slot] === id);
+          }).join('')}
+        </div>
+        <button class="ghost small" data-action="resetWheel" ${locked}>↺ Remettre la roue de départ</button>
+      </div>
+    </div>
+    <div class="action-bar sticky">
+      <button data-action="prevStep" ${locked}>◀ Classe</button>
+      <button class="primary grow" data-action="nextStep">Suivant : équipement ▶</button>
+      <button class="ghost" data-action="leave">Quitter</button>
+    </div>`;
+}
+
+function spinsBlock(g, players, r, myUid) {
+  const spins = Object.values(r.spins || {}).map((x) => ({ uid: x.uid, picks: Object.values(x.picks || {}) }));
+  const n = spins.length;
+  const size = n <= 1 ? 210 : n === 2 ? 160 : 118;
+  // la roue du joueur en premier
+  spins.sort((a, b) => (b.uid === myUid) - (a.uid === myUid));
+  return `<div class="spins n${Math.min(n, 4)}">${spins.map((sp) => {
+    const wheel = sanitizeWheel(g.party?.[sp.uid]?.wheel || []);
+    const got = sp.picks.map((i) => {
+      const t = TILES[wheel[i]];
+      return `<span class="got" data-got style="--tc:${tileColor(wheel[i])}">${t.icon} ${esc(t.name)}</span>`;
+    }).join('');
+    return `<div class="spin">${wheelSvg(wheel, { size, uid: sp.uid, label: esc(players[sp.uid]?.name || '') })}<div class="gots">${got}</div></div>`;
+  }).join('')}</div>`;
 }

@@ -154,8 +154,8 @@ test('jamais plus de 5 choix, même à 4 héros avec un sac plein', () => {
       const choices = getChoices(g, four);
       assert.ok(choices.length <= 5, `${choices.length} choix`);
       const ids = choices.map((c) => c.id);
-      if (g.phase === 'vote' && g.enemy) assert.ok(ids.includes('attaque'), 'l\'attaque reste toujours proposée');
-      if (g.phase === 'vote' && g.enemy) assert.ok(ids.includes('use:potion_soin'), 'potion proposée quand le groupe est blessé');
+      if (g.phase === 'vote' && g.enemy) assert.ok(ids.includes('roue'), 'la roue reste toujours proposée');
+      if (g.phase === 'vote' && g.enemy && Object.values(g.party).some((m) => m.alive && m.hp / m.maxHp <= 0.4)) assert.ok(ids.includes('use:potion_soin'), 'potion proposée quand le groupe est blessé');
       g = resolveChoice(g, four, choices.find((c) => !c.disabled).id, `full${s}`);
     }
   }
@@ -184,7 +184,7 @@ test('compagnons : pouvoirs en jeu et obtention', () => {
   let bites = 0;
   for (let k = 0; k < 30; k++) {
     const g = enterFight(pp('pet_loup'), `w${k}`);
-    const r = resolveChoice(g, pp('pet_loup'), 'defendre', `w${k}`);
+    const r = resolveChoice(g, pp('pet_loup'), 'roue', `w${k}`);
     if (r.lastResult.pets.some((p) => p.kind === 'bite')) bites++;
   }
   assert.ok(bites > 3 && bites < 25, `morsures : ${bites}/30`);
@@ -237,4 +237,37 @@ test('niveau de héros permanent : paliers, bonus cumulés et effet en run', asy
   assert.equal(lv10.stats.int - base.stats.int, 2);
   const g = createGame('hero', 1, { a: { name: 'A', classId: 'clerc', equipped: [], heroLevel: 4 } });
   assert.equal(g.party.a.maxHp, computeCharacter('clerc').maxHp + 4);
+});
+
+test('roue de combat : 2 lancers, roue de départ commune, tuiles limitées aux exemplaires', async () => {
+  const { STARTER_WHEEL, sanitizeWheel, WHEEL_SIZE, TILES } = await import('../src/data/wheel.js');
+  // la roue est validée selon l'inventaire : pas plus d'exemplaires que possédés, sinon « Raté »
+  const w = sanitizeWheel(['t_hache', 't_hache', 't_hache'], { t_hache: 2 });
+  assert.equal(w.length, WHEEL_SIZE);
+  assert.deepEqual(w.slice(0, 3), ['t_hache', 't_hache', 't_rate']);
+  assert.deepEqual(sanitizeWheel([]), STARTER_WHEEL);
+  // en combat : chaque héros vivant lance sa roue 2 fois (plus avec « Encore ! »)
+  const P = { a: { name: 'A', classId: 'guerrier', equipped: [] }, b: { name: 'B', classId: 'clerc', equipped: [], wheel: Array(8).fill('t_encore') } };
+  let g = createGame('wheel', 1, P);
+  const n = g.map.floors[0][0];
+  n.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
+  g = resolveChoice(g, P, `go:${n.id}`, 'wheel');
+  assert.deepEqual(g.party.a.wheel, STARTER_WHEEL, 'roue de départ par défaut');
+  assert.ok(getChoices(g, P).some((c) => c.id === 'roue'));
+  const r = resolveChoice(g, P, 'roue', 'wheel').lastResult;
+  const spins = Object.fromEntries(r.spins.map((s) => [s.uid, s.picks]));
+  assert.equal(spins.a.length, 2);
+  assert.equal(spins.b.length, 6, '« Encore ! » relance jusqu\'à 6 fois au maximum');
+  // une roue pleine de parades bloque toujours l'attaque normale
+  const G = { a: { name: 'A', classId: 'guerrier', equipped: [], wheel: Array(8).fill('t_parade') } };
+  for (let k = 0; k < 20; k++) {
+    let h = createGame(`g${k}`, 1, G);
+    const m = h.map.floors[0][0];
+    m.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
+    h = resolveChoice(h, G, `go:${m.id}`, `g${k}`);
+    h.enemy.intent = 'attack';
+    const after = resolveChoice(h, G, 'roue', `g${k}`);
+    assert.equal(after.party.a.hp, h.party.a.hp, 'la parade bloque');
+  }
+  assert.ok(Object.values(TILES).every((t) => t.kind && t.name && t.icon));
 });

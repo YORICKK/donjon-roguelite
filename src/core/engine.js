@@ -10,6 +10,7 @@ import { ITEMS, RARITY, SHINY_CHANCE } from '../data/items.js';
 import { getLevel, MAP_EXTRA_WEIGHTS } from '../data/levels.js';
 import { ENEMIES, EVENTS, COMBAT_ACTIONS } from '../data/events.js';
 import { heroBonus } from '../data/heroes.js';
+import { TILES, WHEEL_SIZE, SPINS_PER_ATTACK, sanitizeWheel } from '../data/wheel.js';
 import { NODE_TYPES, ELITE, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
 
 export const VOTE_SECONDS = 30;
@@ -146,7 +147,7 @@ export function createGame(seed, levelId, players) {
     if (!p.classId) continue;
     const pet = ITEMS[p.companion]?.companion ? p.companion : null;
     const c = computeCharacter(p.classId, p.equipped || [], [], pet, p.heroLevel || 1);
-    party[uid] = { hp: c.maxHp, maxHp: c.maxHp, alive: true, skillUsed: false, poison: 0, boons: [], pet };
+    party[uid] = { hp: c.maxHp, maxHp: c.maxHp, alive: true, skillUsed: false, poison: 0, boons: [], pet, wheel: sanitizeWheel(p.wheel) };
   }
   const rng = new Rng(`${seed}|entrance`);
   return {
@@ -259,7 +260,7 @@ export function getChoices(game, players) {
     (game.shop || []).forEach((o, i) => {
       if (o.sold) return;
       const def = o.kind === 'item' ? ITEMS[o.id] : CONSUMABLES[o.id];
-      const sub = o.kind === 'item' ? (def.companion ? `compagnon ${RARITY[def.rarity].label.toLowerCase()} : ${def.desc}` : `objet ${RARITY[def.rarity].label.toLowerCase()}, conservé après le run`) : def.desc;
+      const sub = o.kind === 'item' ? (def.companion ? `compagnon ${RARITY[def.rarity].label.toLowerCase()} : ${def.desc}` : def.tile ? `tuile de roue ${RARITY[def.rarity].label.toLowerCase()} : ${def.text}` : `objet ${RARITY[def.rarity].label.toLowerCase()}, conservé après le run`) : def.desc;
       choices.push({ id: `buy:${i}`, label: `${def.icon} ${def.name}`, price: o.price, desc: sub, disabled: game.gold < o.price });
     });
     choices.push({ id: 'leave', label: '🚪 Reprendre la route', safe: true });
@@ -268,14 +269,10 @@ export function getChoices(game, players) {
   if (isFight(room)) {
     const enemy = ENEMIES[game.enemy.id];
     for (const a of COMBAT_ACTIONS) {
-      if (a.undeadOnly && !enemy.undead) continue;
-      if (a.notUndead && enemy.undead) continue; // contre les morts-vivants, « Repousser » remplace l'attaque sournoise
       if (a.noBoss && enemy.boss) continue;
-      const stat = actionStat(game, players, a);
-      const label = a.stats ? (stat === 'int' ? 'Lancer un sort' : "Attaquer à l'arme") : a.label;
       // Fuir n'est utile qu'en mauvaise posture : rangé avec les compétences et objets, selon l'état du groupe
-      if (a.flee) fleeChoice = { id: a.id, label, stat, desc: a.desc };
-      else choices.push({ id: a.id, label, stat, desc: a.desc });
+      if (a.flee) fleeChoice = { id: a.id, label: a.label, stat: a.stat, desc: a.desc };
+      else choices.push({ id: a.id, label: a.label, desc: a.desc, wheel: true });
     }
   } else {
     for (const c of getEvent(room).choices) {
@@ -330,16 +327,6 @@ function itemScore(game, id) {
   return 10;
 }
 
-/** Stat d'une action de combat ; « Attaquer » prend la meilleure entre FOR et INT. */
-function actionStat(game, players, a) {
-  if (!a.stats) return a.stat;
-  let best = a.stats[0], bestMod = -99;
-  for (const st of a.stats) {
-    const c = bestChampion(game, players, st);
-    if (c && c.mod > bestMod) { best = st; bestMod = c.mod; }
-  }
-  return best;
-}
 
 /** Un choix d'événement est-il visible / jouable ? (classe présente, conditions, coût) */
 function eventChoiceState(game, players, c) {
@@ -455,16 +442,18 @@ function healAll(game, amount, players, lines, cure = false) {
   (game._healed = true);
 }
 
-export function rollLoot(rng, levelId, boost = 0) {
+/** Butin : une tuile de roue (55 %) ou un objet d'équipement. */
+export const TILE_LOOT_CHANCE = 0.55;
+export function rollLoot(rng, levelId, boost = 0, tile = rng.chance(TILE_LOOT_CHANCE)) {
   const level = getLevel(levelId);
   let rarity = rng.weighted(level.lootTable);
   const order = Object.keys(RARITY);
   if (boost) rarity = order[Math.min(order.length - 1, order.indexOf(rarity) + boost)];
   for (let r = order.indexOf(rarity); r >= 0; r--) {
-    const pool = Object.keys(ITEMS).filter((id) => !ITEMS[id].companion && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
+    const pool = Object.keys(ITEMS).filter((id) => !ITEMS[id].companion && !!ITEMS[id].tile === tile && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
     if (pool.length) return rng.pick(pool);
   }
-  return 'dague_rouillee';
+  return tile ? 't_epee' : 'dague_rouillee';
 }
 
 /** Tire un compagnon selon la rareté du niveau (les plus rares deviennent possibles aux niveaux avancés). */
@@ -505,7 +494,7 @@ function petOwners(game, power) {
 function gainLoot(game, rng, lines, boost = 0) {
   const itemId = rollLoot(rng, game.levelId, boost);
   game.loot = [...(game.loot || []), itemId];
-  lines.push(`🎁 Butin : ${ITEMS[itemId].icon} ${ITEMS[itemId].name} (${RARITY[ITEMS[itemId].rarity].label})`);
+  lines.push(`🎁 ${ITEMS[itemId].tile ? 'Nouvelle tuile de roue' : 'Butin'} : ${ITEMS[itemId].icon} ${ITEMS[itemId].name} (${RARITY[ITEMS[itemId].rarity].label})${ITEMS[itemId].tile ? ` — ${ITEMS[itemId].text}` : ''}`);
 }
 
 function gainGold(game, n, lines) {
@@ -553,6 +542,77 @@ function applyEffect(game, players, rng, lines, e, actor, level) {
 }
 
 /** L'ennemi agit selon son intention annoncée. */
+// ---------- La roue ----------
+/** Bonus de dégâts hors classe (objets, bonus de niveau, niveau de héros) ajouté à chaque tuile de dégâts. */
+function dmgBonusOf(players, uid, c) {
+  return c.dmg - (CLASSES[players[uid].classId]?.dmg || c.dmg);
+}
+
+/**
+ * Chaque héros vivant fait tourner sa roue 2 fois (plus avec « Encore ! »). Retourne les cases obtenues
+ * (pour l'animation), si l'attaque ennemie est bloquée, et le héros qui a fait le plus de dégâts.
+ */
+function spinWheels(game, players, rng, lines) {
+  const e = ENEMIES[game.enemy.id];
+  const halve = game.enemy.intent === 'defend';
+  const spins = [];
+  let guarded = false;
+  let best = null, bestDmg = -1, bestStat = null;
+  for (const [uid, m] of Object.entries(game.party)) {
+    if (!m.alive || !players[uid]) continue;
+    const wheel = sanitizeWheel(m.wheel);
+    const c = charOf(game, players, uid);
+    const bonus = dmgBonusOf(players, uid, c) + (game.blessed > 0 ? 2 : 0) - (game.cursed ? 1 : 0);
+    let rerolls = c.luck; // chaque point de chance relance un « Raté »
+    let toSpin = SPINS_PER_ATTACK;
+    const picks = [];
+    while (toSpin > 0 && picks.length < 6) {
+      let idx = rng.int(0, WHEEL_SIZE - 1);
+      if (TILES[wheel[idx]].kind === 'miss' && rerolls > 0) { rerolls -= 1; idx = rng.int(0, WHEEL_SIZE - 1); }
+      picks.push(idx);
+      toSpin -= 1;
+      if (TILES[wheel[idx]].kind === 'respin') toSpin += 2;
+    }
+    const tiles = picks.map((i) => TILES[wheel[i]]);
+    const jm = 2 ** tiles.filter((t) => t.kind === 'jackpot').length;
+    let dealt = 0, mainStat = null;
+    const parts = [];
+    for (const t of tiles) {
+      const statMod = t.stat ? Math.max(0, c.stats[t.stat]) : 0;
+      const amount = (t.base || 0) + (t.mult || 1) * statMod;
+      const mult = t.kind === 'jackpot' || t.kind === 'respin' ? 1 : jm;
+      if (t.kind === 'dmg' || t.kind === 'smite' || t.kind === 'gold') {
+        const perHit = t.kind === 'gold' ? 2 : Math.max(1, amount + bonus);
+        let d = perHit * (t.hits || 1) * (t.undead && e.undead ? t.undead : 1) * mult;
+        if (halve) d = Math.ceil(d / 2);
+        game.enemy.hp -= d;
+        dealt += d;
+        if (t.stat && (!mainStat || d > 0)) mainStat = t.stat;
+        parts.push(`${t.icon} ${t.name} (${d})`);
+        if (t.kind === 'gold') game.gold = (game.gold || 0) + t.base * mult;
+        if (t.kind === 'smite') healAll(game, t.heal * mult, players, [], false);
+      } else if (t.kind === 'heal') {
+        healAll(game, amount * mult, players, [], !!t.cleanse);
+        parts.push(`${t.icon} ${t.name} (+${amount * mult} PV)`);
+        mainStat ||= 'sag';
+      } else if (t.kind === 'guard') {
+        guarded = true;
+        if (t.base) healAll(game, t.base * mult, players, [], false);
+        parts.push(`${t.icon} ${t.name}`);
+      } else if (t.kind === 'poison') {
+        game.enemy.poison = 3;
+        game.enemy.poisonDmg = Math.max(game.enemy.poisonDmg || 0, t.base * mult);
+        parts.push(`${t.icon} ${t.name}`);
+      } else parts.push(`${t.icon} ${t.name}`);
+    }
+    lines.push(`🎡 ${players[uid].name} : ${parts.join(' + ')}${dealt ? ` → ${dealt} dégâts` : ''}`);
+    spins.push({ uid, picks });
+    if (dealt > bestDmg) { bestDmg = dealt; best = uid; bestStat = mainStat; }
+  }
+  if (halve) lines.push(`🛡️ ${e.name} se protège : dégâts divisés par deux.`);
+  return { spins, guarded, best, stat: bestStat };
+}
+
 function enemyAct(game, players, rng, lines, { failed, guarded }) {
   const { e, dmgMax } = enemyStats(game);
   const intent = game.enemy.intent;
@@ -609,6 +669,9 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   let failed = false;
   let guarded = false;
   let enemyActs = fight; // l'ennemi agit après l'action du groupe
+  let spins = null;
+  let spinStat = null;
+  const enemyBefore = game.enemy ? game.enemy.hp : null;
 
   if (choiceId.startsWith('buy:')) {
     const o = game.shop[Number(choiceId.slice(4))];
@@ -674,29 +737,21 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
         break;
       }
     }
-  } else if (fight) {
-    const action = COMBAT_ACTIONS.find((a) => a.id === choiceId);
-    const e = ENEMIES[game.enemy.id];
-    const stat = actionStat(game, players, action);
-    const champ = bestChampion(game, players, stat);
+  } else if (fight && choiceId === 'fuir') {
+    const champ = bestChampion(game, players, 'dex');
     championUid = champ.uid;
-    label = `${players[champ.uid].name} : ${action.stats ? (stat === 'int' ? 'Lancer un sort' : "Attaquer à l'arme") : action.label}`;
-    rollRes = roll(rng, champ.mod, choiceDc(game, choiceId), stat);
-    if (action.flee) {
-      if (rollRes.success) { lines.push('Le groupe s’échappe dans le couloir suivant !'); roomDone = true; game.enemy.fled = true; enemyActs = false; }
-      else { lines.push('Impossible de fuir !'); failed = true; }
-    } else if (action.guard) {
-      if (rollRes.success) { guarded = true; lines.push('🛡️ Le groupe lève sa garde.'); }
-      else { failed = true; lines.push('La garde est trop lente…'); }
-    } else if (rollRes.success) {
-      let dmg = rng.int(1, champ.char.dmg) + Math.max(0, champ.char.stats[stat]);
-      dmg = Math.round(dmg * (action.dmgMult || 1) * (rollRes.crit ? 2 : 1));
-      game.enemy.hp -= dmg;
-      lines.push(`${rollRes.crit ? 'CRITIQUE ! ' : ''}${e.name} subit ${dmg} dégâts.`);
-    } else {
-      failed = true;
-      lines.push(`${rollRes.fumble ? 'Échec critique… ' : 'Raté. '}`);
-    }
+    label = `${players[champ.uid].name} : Fuir`;
+    rollRes = roll(rng, champ.mod, choiceDc(game, choiceId), 'dex');
+    if (rollRes.success) { lines.push('Le groupe s’échappe dans le couloir suivant !'); roomDone = true; game.enemy.fled = true; enemyActs = false; }
+    else { lines.push('Impossible de fuir !'); failed = true; }
+  } else if (fight) {
+    const res = spinWheels(game, players, rng, lines);
+    spins = res.spins;
+    guarded = res.guarded;
+    failed = true; // pas de jet : l'ennemi frappe à chaque tour, sauf si une tuile de garde est sortie
+    championUid = res.best;
+    spinStat = res.stat;
+    label = '🎡 Les roues tournent !';
   } else {
     const ev = getEvent(room);
     const choice = ev.choices.find((c) => c.id === choiceId);
@@ -731,6 +786,11 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
       lines.push(`🐺 Le loup de ${players[uid].name} mord ${ENEMIES[game.enemy.id].name} (−${dmg} PV) !`);
       (game._pets ||= []).push({ uid, kind: 'bite' });
     }
+  }
+  if (game.enemy && !game.enemy.fled && fight && game.enemy.poison > 0 && game.enemy.hp > 0) {
+    game.enemy.hp -= game.enemy.poisonDmg || 3;
+    game.enemy.poison -= 1;
+    lines.push(`🧪 ${ENEMIES[game.enemy.id].name} souffre du poison (−${game.enemy.poisonDmg || 3} PV).`);
   }
   if (game.enemy && !game.enemy.fled) {
     const e = ENEMIES[game.enemy.id];
@@ -770,7 +830,7 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
 
   const anyAlive = Object.values(game.party).some((m) => m.alive);
   game.lastResult = {
-    label, lines, roll: rollRes, championUid, roomDone, choiceId,
+    label, lines, roll: rollRes, championUid, roomDone, choiceId, spins, stat: spinStat, enemyBefore,
     hurt: game._hurt || [], poisoned: game._poisoned || [], healed: !!game._healed, enemyAction, pets: game._pets || [],
   };
   delete game._hurt; delete game._poisoned; delete game._healed; delete game._pets;

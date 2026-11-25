@@ -423,3 +423,54 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 .steps span.done { color: var(--gold-hi); }
 .chosen-class { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--cc); background: linear-gradient(180deg, rgba(227, 178, 90, 0.1), rgba(0, 0, 0, 0.35)); box-shadow: 0 0 18px -8px var(--cc); }
 .chosen-class .name { font: 600 1.1rem var(--font-title); color: var(--text); }
+
+/* ---------- Roue de combat (casino) ---------- */
+.wheel { position: relative; width: var(--size); max-width: 100%; margin: 0 auto; filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6)); }
+.wheel svg { display: block; width: 100%; height: auto; overflow: visible; }
+.wheel .rot { transform-box: fill-box; transform-origin: center; }
+.wheel .seg path { stroke: rgba(0, 0, 0, 0.35); stroke-width: 0.6; }
+.wheel .seg.miss path { filter: saturate(0.4); }
+.wheel .sep line { stroke: #f6d27a; stroke-width: 1.6; opacity: 0.9; }
+.wheel .seg-ico { font-size: 22px; text-anchor: middle; dominant-baseline: central; }
+.wheel .seg-name { font: 700 8.5px var(--font-title, serif); fill: #fff; text-anchor: middle; dominant-baseline: central; paint-order: stroke; stroke: rgba(0, 0, 0, 0.75); stroke-width: 2.4px; letter-spacing: 0.02em; }
+.wheel .seg[data-action] { cursor: pointer; }
+.wheel .seg[data-action]:hover path { filter: brightness(1.25); }
+.wheel .seg.sel path { stroke: #fff; stroke-width: 3; filter: brightness(1.3); }
+.wheel .seg.win path { stroke: #fff6c8; stroke-width: 3.5; animation: segWin 0.5s ease-in-out 4 alternate; }
+@keyframes segWin { from { filter: brightness(1); } to { filter: brightness(1.7) drop-shadow(0 0 6px #fff3b0); } }
+/* ampoules : clignotent en alternance, s'emballent pendant le lancer */
+.wheel .bulb { fill: #fff3c4; }
+.wheel .bulb.even { animation: bulb 1.2s steps(1) infinite; }
+.wheel .bulb.odd { animation: bulb 1.2s steps(1) infinite 0.6s; }
+.wheel.spinning .bulb.even, .wheel.spinning .bulb.odd { animation-duration: 0.24s; }
+.wheel.spinning .bulb.odd { animation-delay: 0.12s; }
+@keyframes bulb { 0% { fill: #fff8d8; filter: drop-shadow(0 0 4px #ffd36b); } 50% { fill: #6b4a17; filter: none; } }
+/* aiguille qui claque contre les picots */
+.wheel .pointer { transform-box: fill-box; transform-origin: 50% 0; }
+.wheel.spinning .pointer { animation: tick 0.11s ease-in-out infinite alternate; }
+@keyframes tick { from { transform: rotate(-9deg); } to { transform: rotate(5deg); } }
+.wheel.flash { animation: wheelFlash 0.45s ease-out; }
+@keyframes wheelFlash { 0% { filter: drop-shadow(0 0 0 #ffd36b); } 40% { filter: drop-shadow(0 0 22px #ffd36b); } 100% { filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.6)); } }
+.wheel-label { text-align: center; font: 600 0.85rem var(--font-title); color: var(--gold-hi); margin-top: 4px; }
+
+.spins { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 14px; margin: 6px 0 10px; }
+.spins .spin { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.spins .gots { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; max-width: 220px; }
+.spins .got { font-size: 0.78rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: color-mix(in srgb, var(--tc) 55%, #000); color: #fff; border: 1px solid color-mix(in srgb, var(--tc) 80%, #fff); white-space: nowrap; }
+.spins .got.hidden { visibility: hidden; }
+.spins .got.pop { animation: gotPop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes gotPop { from { transform: scale(0.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* éditeur de roue (salon) */
+.wheel-editor { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+.wheel-editor .wheel-stage { padding-top: 6px; }
+.tiles-pick { max-height: 300px; overflow-y: auto; padding-right: 4px; }
+.item.tile { border-left: 4px solid var(--tc); }
+@media (max-width: 720px) {
+  .wheel-editor { grid-template-columns: 1fr; }
+  .wheel-editor .wheel { --size: 200px !important; }
+  .tiles-pick { max-height: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wheel .bulb, .wheel.spinning .pointer, .wheel .seg.win path { animation: none; }
+}
