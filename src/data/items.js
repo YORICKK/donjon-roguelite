@@ -22,6 +22,7 @@ export const ITEMS = {
   cape_ombre: { name: "Cape d'ombre", icon: '🧥', rarity: 'epique', tier: 2, bonus: { dex: 2, hp: 2 } },
   baton_archimage: { name: "Bâton d'archimage", icon: '🪄', rarity: 'legendaire', tier: 3, bonus: { int: 3, dmg: 4 } },
   couronne_liche: { name: 'Couronne de la liche', icon: '👑', rarity: 'legendaire', tier: 3, bonus: { sag: 2, int: 2, hp: 4 } },
+  ecaille_dragon: { name: 'Écaille du Dragon-Roi', icon: '🐉', rarity: 'legendaire', tier: 4, bonus: { for: 1, dex: 1, int: 1, sag: 1, hp: 8 } },
 
   // ---------- Compagnons : conservés comme des objets, un seul par joueur au début d'un run ----------
   // power : effet en jeu (voir engine.js) ; model : nœud du fichier companions.glb.
@@ -67,7 +68,7 @@ for (const [id, look] of Object.entries(SHINY_LOOKS)) {
 }
 
 // ---------- Tuiles de roue : conservées comme des objets (voir data/wheel.js) ----------
-for (const [id, t] of Object.entries(TILES)) if (!t.starter) ITEMS[id] = t;
+for (const [id, t] of Object.entries(TILES)) if (!t.starter && !t.ultOnly && !t.ultTile) ITEMS[id] = t;
 
 export const MAX_EQUIPPED = 2;
 /** Objet d'équipement (ni compagnon ni tuile de roue). */

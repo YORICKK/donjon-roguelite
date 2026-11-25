@@ -854,17 +854,18 @@ function buildProps(def, mat, kit) {
   }
   if (def.enemyId) {
     const e = ENEMIES[def.enemyId];
-    const model = kit?.pieces[`enemy_${def.enemyId}`];
+    const model = kit?.pieces[e.model || `enemy_${def.enemyId}`];
     // Modèles Blender à l'échelle réelle ; seuls le rat (géant) est agrandi.
     const enemy = model ? cloneModel(model) : buildEnemy(e, mat);
     enemy.position.set(0, 0, e.boss ? (model ? -1.2 : -3.5) : -2.2);
-    if (model) enemy.scale.setScalar(({ rat_geant: 1.3, chef_gobelin: 1.15 }[def.enemyId] || 1) * (def.type === 'elite' ? 1.18 : 1));
+    if (model && e.look) applyShinyLook(enemy, e.look, `enemy_${def.enemyId}`);
+    if (model) enemy.scale.setScalar((e.scale || { rat_geant: 1.3, chef_gobelin: 1.15 }[def.enemyId] || 1) * (def.type === 'elite' ? 1.18 : 1));
     if (def.type === 'elite') {
       const aura = new FakeLight(0xff3020, 10, 5);
       aura.position.set(0, 1.2, enemy.position.z + 0.6);
       group.add(aura);
     }
-    else if (e.boss) enemy.scale.setScalar(1.6);
+    else if (e.boss && !e.scale) enemy.scale.setScalar(1.6);
     group.add(enemy);
     enemy.traverse((o) => { if (o.isMesh) o.castShadow = true; });
     if (model) {

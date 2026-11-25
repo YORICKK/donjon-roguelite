@@ -474,3 +474,10 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 @media (prefers-reduced-motion: reduce) {
   .wheel .bulb, .wheel.spinning .pointer, .wheel .seg.win path { animation: none; }
 }
+
+/* ---------- Roue d'ulti : surgit en tournoyant ---------- */
+.spins .ult-spin.hidden { display: none; }
+.spins .ult-spin.appear { animation: ultAppear 0.7s cubic-bezier(0.2, 1.5, 0.4, 1); }
+@keyframes ultAppear { 0% { transform: scale(0.1) rotate(-200deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
+.spins .ult-spin .wheel { filter: drop-shadow(0 0 16px rgba(255, 106, 0, 0.75)); }
+.spins .ult-spin .wheel-label { color: #ffb070; text-shadow: 0 0 8px rgba(255, 106, 0, 0.8); }

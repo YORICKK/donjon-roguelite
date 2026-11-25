@@ -78,7 +78,11 @@ function afterRender() {
   const wheelsEl = ui.querySelector('.spins');
   const die = ui.querySelector('[data-die]');
   if (wheelsEl && g?.lastResult?.spins) {
-    const spins = Object.values(g.lastResult.spins).map((x) => ({ uid: x.uid, picks: Object.values(x.picks || {}) }));
+    const raw = Object.values(g.lastResult.spins);
+    const spins = raw.map((x) => ({ uid: x.uid, picks: Object.values(x.picks || {}) }));
+    // lancers des roues d'ulti (uid « joueur:uK »)
+    const ultSpins = raw.flatMap((x) => Object.values(x.ults || {}).map((u, k) => ({ uid: `${x.uid}:u${k}`, picks: Object.values(u.picks || {}) })));
+    const allSpins = [...spins, ...ultSpins];
     const lines = ui.querySelector('[data-lines]');
     if (app.animatedResult !== key) {
       app.animatedResult = key;
@@ -94,15 +98,35 @@ function afterRender() {
         },
         onDone: () => {
           if (app.spinning !== key) return;
-          app.spinning = null;
-          render(); // affiche les lignes et les PV de l'ennemi
-          reactScene(g);
+          const finish = () => {
+            if (app.spinning !== key) return;
+            app.spinning = null;
+            render(); // affiche les lignes et les PV de l'ennemi
+            reactScene(g);
+          };
+          if (!ultSpins.length) { finish(); return; }
+          // ULTI ! la roue spéciale surgit puis enchaîne ses lancers
+          const el = ui.querySelector('.spins');
+          el?.querySelectorAll('.ult-spin').forEach((u) => { u.classList.remove('hidden'); u.classList.add('appear'); });
+          el?.querySelector('.ult-spin')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          buzz([30, 30, 30, 30, 80]);
+          const many = Math.max(...ultSpins.map((u) => u.picks.length)) > 4;
+          setTimeout(() => animateWheels(el, ultSpins, {
+            duration: many ? 750 : 1300,
+            gap: many ? 180 : 400,
+            onStep: (uid, k) => {
+              const g2 = ui.querySelector(`.spins [data-wheel="${CSS.escape(uid)}"]`)?.closest('.spin')?.querySelectorAll('[data-got]')[k];
+              g2?.classList.remove('hidden');
+              g2?.classList.add('pop');
+            },
+            onDone: finish,
+          }), 700);
         },
       });
-    } else if (app.spinning !== key) settleWheels(wheelsEl, spins);
+    } else if (app.spinning !== key) settleWheels(wheelsEl, allSpins);
     else { // re-rendu pendant l'animation : on montre le résultat final
       app.spinning = null;
-      settleWheels(wheelsEl, spins);
+      settleWheels(wheelsEl, allSpins);
       reactScene(g);
     }
   } else if (die && g?.lastResult) {
@@ -381,6 +405,7 @@ function goStep(step) {
 /** Enregistre la roue d'une classe dans le profil et la transmet au salon. */
 function saveWheel(classId, wheel) {
   app.profile.wheels = { ...(app.profile.wheels || {}), [classId]: wheel };
+  app.profile.ultSeen = { ...(app.profile.ultSeen || {}), [classId]: true };
   upd({ [`players/${app.uid}/wheel`]: wheel });
   render();
   clearTimeout(app.wheelSaveT);
@@ -474,7 +499,7 @@ const actions = {
     const wheel = currentWheel(app, me.classId);
     const slot = app.wheelSlot || 0;
     const id = el.dataset.id;
-    const owned = ownedTiles(app.profile.inventory || {});
+    const owned = ownedTiles(app.profile.inventory || {}, me.classId);
     const used = wheel.filter((x, i) => x === id && i !== slot).length;
     if (!TILES[id] || used >= owned[id]) { toast('Plus d’exemplaire de cette tuile.'); return; }
     wheel[slot] = id;

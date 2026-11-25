@@ -14,7 +14,7 @@ import { LEVELS } from '../src/data/levels.js';
 import { ENEMIES } from '../src/data/events.js';
 import { BOONS } from '../src/data/run.js';
 import { heroLevel } from '../src/data/heroes.js';
-import { TILES, WHEEL_SIZE, STARTER_WHEEL, ownedTiles } from '../src/data/wheel.js';
+import { TILES, WHEEL_SIZE, STARTER_WHEEL, ULT_WHEELS, ownedTiles, classStarterWheel } from '../src/data/wheel.js';
 
 const MAIN_STAT = { guerrier: 'for', mage: 'int', voleur: 'dex', clerc: 'sag' };
 
@@ -149,11 +149,14 @@ function tileValue(classId, id) {
     case 'gold': return 3;
     case 'jackpot': return 9;
     case 'respin': return 8;
+    case 'bless': return 3;
+    case 'revive': return 5;
+    case 'ult': { const d = ULT_WHEELS[t.ult]; return (d.wheel.reduce((a, id) => a + tileValue(classId, id), 0) / d.wheel.length) * d.spins; }
     default: return 0;
   }
 }
 export function bestWheel(classId, inventory) {
-  const owned = ownedTiles(inventory);
+  const owned = ownedTiles(inventory, classId);
   const pool = [];
   for (const [id, n] of Object.entries(owned)) for (let k = 0; k < Math.min(n, WHEEL_SIZE); k++) pool.push(id);
   pool.sort((a, b) => tileValue(classId, b) - tileValue(classId, a));
@@ -168,7 +171,7 @@ function bestPet(owned) {
   return pets.sort((a, b) => PET_RANK[b] - PET_RANK[a])[0] || null;
 }
 
-export function winRate(classId, levelId, equipped, companion, N, tag, wheel = STARTER_WHEEL, heroLv = 1) {
+export function winRate(classId, levelId, equipped, companion, N, tag, wheel = classStarterWheel(classId), heroLv = 1) {
   let wins = 0;
   for (let k = 0; k < N; k++) {
     const players = { solo: { name: 'Solo', classId, equipped, companion, wheel, heroLevel: heroLv } };
@@ -212,10 +215,10 @@ const RANK = { commun: 0, rare: 1, epique: 2, legendaire: 3 };
 // inventaire fictif : toutes les tuiles jusqu'à une rareté donnée, n exemplaires
 const inv = (max, n = 1) => Object.fromEntries(Object.values(TILES).filter((t) => !t.starter && RANK[t.rarity] <= max).map((t) => [t.id, n]));
 console.log(`\nTaux de victoire SOLO (${N} runs par case) — bot qui joue raisonnablement\n`);
-console.log('Classe     Roue / équipement             Niv 1   Niv 2   Niv 3');
+console.log(`Classe     Roue / équipement             ${LEVELS.map((l) => `Niv ${l.id}`).join('   ')}`);
 for (const classId of Object.keys(CLASSES)) {
   const configs = [
-    ['roue de départ', STARTER_WHEEL, [], 1],
+    ['roue de départ', classStarterWheel(classId), [], 1],
     ['tuiles communes', bestWheel(classId, inv(0)), [], 1],
     ['tuiles rares, héros niv 3', bestWheel(classId, inv(1)), [], 3],
     ['épiques + objets, niv 5', bestWheel(classId, inv(2)), BEST[classId], 5],
@@ -229,14 +232,14 @@ for (const classId of Object.keys(CLASSES)) {
 
 const C = Number(process.argv[3]) || 40;
 console.log(`\nCampagne solo complète (${C} campagnes par classe, max 400 runs) : nombre de runs pour finir chaque niveau\n`);
-console.log('Classe     Niv 1 (médiane)  Niv 2 (médiane)  Niv 3 (médiane)  Campagnes finies');
+console.log(`Classe     ${LEVELS.map((l) => `Niv ${l.id} (médiane)`.padEnd(17)).join('')}Campagnes finies`);
 for (const classId of Object.keys(CLASSES)) {
   const res = Array.from({ length: C }, (_, k) => campaign(classId, `camp-${classId}-${k}`));
   const med = (lvl) => {
     const xs = res.map((r) => r.runsToClear[lvl]).filter(Boolean).sort((a, b) => a - b);
     return xs.length ? `${xs[Math.floor(xs.length / 2)]} (${xs.length}/${C})` : `— (0/${C})`;
   };
-  const done = res.filter((r) => r.runsToClear[3]).length;
-  console.log(`${CLASSES[classId].name.padEnd(10)} ${med(1).padEnd(16)} ${med(2).padEnd(16)} ${med(3).padEnd(16)} ${done}/${C}`);
+  const done = res.filter((r) => r.runsToClear[LEVELS.length]).length;
+  console.log(`${CLASSES[classId].name.padEnd(10)} ${LEVELS.map((l) => med(l.id).padEnd(17)).join('')}${done}/${C}`);
 }
 }

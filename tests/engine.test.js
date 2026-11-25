@@ -240,7 +240,7 @@ test('niveau de héros permanent : paliers, bonus cumulés et effet en run', asy
 });
 
 test('roue de combat : 2 lancers, roue de départ commune, tuiles limitées aux exemplaires', async () => {
-  const { STARTER_WHEEL, sanitizeWheel, WHEEL_SIZE, TILES } = await import('../src/data/wheel.js');
+  const { STARTER_WHEEL, sanitizeWheel, WHEEL_SIZE, TILES, classStarterWheel } = await import('../src/data/wheel.js');
   // la roue est validée selon l'inventaire : pas plus d'exemplaires que possédés, sinon « Raté »
   const w = sanitizeWheel(['t_hache', 't_hache', 't_hache'], { t_hache: 2 });
   assert.equal(w.length, WHEEL_SIZE);
@@ -252,7 +252,7 @@ test('roue de combat : 2 lancers, roue de départ commune, tuiles limitées aux 
   const n = g.map.floors[0][0];
   n.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
   g = resolveChoice(g, P, `go:${n.id}`, 'wheel');
-  assert.deepEqual(g.party.a.wheel, STARTER_WHEEL, 'roue de départ par défaut');
+  assert.deepEqual(g.party.a.wheel, classStarterWheel('guerrier'), 'roue de départ avec ulti par défaut');
   assert.ok(getChoices(g, P).some((c) => c.id === 'roue'));
   const r = resolveChoice(g, P, 'roue', 'wheel').lastResult;
   const spins = Object.fromEntries(r.spins.map((s) => [s.uid, s.picks]));
@@ -270,4 +270,27 @@ test('roue de combat : 2 lancers, roue de départ commune, tuiles limitées aux 
     assert.equal(after.party.a.hp, h.party.a.hp, 'la parade bloque');
   }
   assert.ok(Object.values(TILES).every((t) => t.kind && t.name && t.icon));
+});
+
+test('ultis : chaque classe a sa tuile, sa roue apparaît et tourne plusieurs fois', async () => {
+  const { classStarterWheel, ULT_WHEELS, TILES, sanitizeWheel } = await import('../src/data/wheel.js');
+  for (const cls of ['guerrier', 'mage', 'voleur', 'clerc']) {
+    assert.ok(classStarterWheel(cls).includes(`ult_${cls}`), `${cls} reçoit son ulti`);
+    // l'ulti d'une autre classe n'est pas accepté
+    const other = cls === 'mage' ? 'guerrier' : 'mage';
+    assert.equal(sanitizeWheel(Array(8).fill(`ult_${other}`), null, cls)[0], 't_rate');
+  }
+  assert.ok(ULT_WHEELS.assassin.spins > ULT_WHEELS.berserker.spins, 'l\'assassin lance beaucoup plus');
+  // une roue pleine d'ultis : la roue spéciale tourne à chaque fois
+  const P = { a: { name: 'A', classId: 'voleur', equipped: [], wheel: Array(8).fill('ult_voleur') } };
+  let g = createGame('ult', 1, P);
+  const n = g.map.floors[0][0];
+  n.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
+  g = resolveChoice(g, P, `go:${n.id}`, 'ult');
+  const r = resolveChoice(g, P, 'roue', 'ult').lastResult;
+  const sp = r.spins[0];
+  assert.equal(sp.ults.length, 2, 'deux tuiles ulti = deux roues spéciales');
+  for (const u of sp.ults) { assert.equal(u.wheel, 'assassin'); assert.ok(u.picks.length >= 7); }
+  assert.ok(r.lines.some((l) => l.includes("Roue de l'assassin")));
+  assert.ok(Object.values(TILES).filter((t) => t.ultOnly).every((t) => t.kind && t.icon));
 });

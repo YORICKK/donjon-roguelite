@@ -9,6 +9,12 @@ export const ENEMIES = {
   spectre: { name: 'Spectre', hp: 12, dmg: 6, dc: 13, color: 0x9fd3ff, shape: 'ghost', undead: true, xp: 9, gold: [6, 14], intents: { attack: 3, poison: 2, defend: 1 } },
   chef_gobelin: { name: 'Chef gobelin', hp: 18, dmg: 5, dc: 12, color: 0x3d8b37, shape: 'brute', boss: true, xp: 20, gold: [25, 40], intents: { attack: 3, heavy: 2, defend: 1, enrage: 1 } },
   golem: { name: 'Golem de pierre', hp: 30, dmg: 8, dc: 13, color: 0x7f8c8d, shape: 'brute', boss: true, xp: 30, gold: [40, 60], intents: { attack: 2, heavy: 3, defend: 2 } },
+  // Niveau 4 : la Forge du Dragon-Roi. model : pièce 3D réutilisée, look : recoloration (lave, cendres).
+  salamandre: { name: 'Salamandre de feu', hp: 10, dmg: 5, dc: 13, color: 0xff5a1a, shape: 'rat', model: 'enemy_rat_geant', scale: 1.6, look: { hue: 0.03, sat: 1, light: 1.15, glow: 0xff3a00 }, xp: 9, gold: [8, 16], intents: { attack: 3, poison: 2 } },
+  demon_lave: { name: 'Démon de lave', hp: 20, dmg: 8, dc: 14, color: 0xc0392b, shape: 'brute', model: 'enemy_ogre', scale: 1.1, look: { hue: 0.0, sat: 0.95, light: 0.95, glow: 0xff2a00 }, xp: 14, gold: [12, 24], intents: { attack: 2, heavy: 2, enrage: 1 } },
+  spectre_cendre: { name: 'Spectre de cendres', hp: 14, dmg: 7, dc: 14, color: 0xffa060, shape: 'ghost', undead: true, model: 'enemy_spectre', look: { hue: 0.07, sat: 0.9, light: 1.3, glow: 0xff7a20 }, xp: 11, gold: [10, 18], intents: { attack: 3, poison: 2, defend: 1 } },
+  golem_magma: { name: 'Golem de magma', hp: 24, dmg: 9, dc: 15, color: 0x8a3a1a, shape: 'brute', model: 'enemy_golem', scale: 0.8, look: { hue: 0.04, sat: 0.85, light: 0.9, glow: 0xff4500 }, xp: 15, gold: [14, 26], intents: { attack: 2, heavy: 2, defend: 1 } },
+  dragon_roi: { name: 'Ignar, le Dragon-Roi', hp: 46, dmg: 11, dc: 16, color: 0x9b1d0f, shape: 'brute', boss: true, model: 'pet_dragon', scale: 4.2, look: { hue: 0.97, sat: 0.7, light: 0.62, glow: 0xff3000 }, xp: 60, gold: [90, 140], intents: { attack: 3, heavy: 3, poison: 1, enrage: 1 } },
   liche: { name: 'La Liche', hp: 40, dmg: 10, dc: 15, color: 0xb388ff, shape: 'ghost', boss: true, undead: true, xp: 40, gold: [60, 90], intents: { attack: 3, heavy: 2, poison: 2, enrage: 1 } },
 };
 

@@ -25,6 +25,13 @@ export const LEVELS = [
     enemies: ['ogre', 'spectre', 'squelette'], boss: 'liche',
     lootTable: { commun: 10, rare: 40, epique: 38, legendaire: 12 },
   },
+  {
+    id: 4, name: 'La Forge du Dragon-Roi', theme: 'forge', rooms: 7, dcBonus: 5, enemyScale: 2.2,
+    palette: { floor: 0x3a2018, wall: 0x5c2a1c, fog: 0x0e0302, torch: 0xff5a1a },
+    weights: { combat: 5, trap: 2, chest: 2, shrine: 1, npc: 1, rest: 1 },
+    enemies: ['salamandre', 'demon_lave', 'spectre_cendre', 'golem_magma'], boss: 'dragon_roi',
+    lootTable: { commun: 5, rare: 25, epique: 45, legendaire: 25 },
+  },
 ];
 
 // Carte : `rooms` étages avant le boss, 2 à 3 portes par étage. Les poids `weights` décident

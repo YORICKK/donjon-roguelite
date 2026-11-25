@@ -42,6 +42,17 @@ export const THEMES = {
   },
 };
 
+// Niveau 4 : roche de la mine teintée de rouge, braseros partout, braises qui montent.
+THEMES.forge = {
+  walls: ['mine_wall_0', 'mine_wall_1'],
+  floors: ['mine_floor_0', 'mine_floor_1'],
+  pillar: 'obelisk',
+  alongWalls: ['brazier', 'ore_pile', 'brazier', 'statue'],
+  corners: ['brazier', 'rubble', 'ore_pile', 'bones', 'brazier'],
+  particles: { color: 0xff7a2a, count: 170, size: 0.06, speed: 0.08, rise: 0.3, additive: true },
+  fog: [5, 26],
+};
+
 /** Décor ajouté selon le type de salle, quel que soit le biome. */
 export const ROOM_DRESSING = {
   rest: ['bedroll', 'bedroll', 'table_set'],

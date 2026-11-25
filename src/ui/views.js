@@ -1,7 +1,7 @@
 // Gabarits HTML des écrans. Fonctions pures : (app, état) -> chaîne HTML.
 import { CLASSES, STAT_LABELS } from '../data/classes.js';
 import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus, isGear } from '../data/items.js';
-import { TILES, WHEEL_SIZE, ownedTiles, sanitizeWheel, tileColor } from '../data/wheel.js';
+import { TILES, WHEEL_SIZE, ULT_WHEELS, ownedTiles, sanitizeWheel, tileColor } from '../data/wheel.js';
 import { wheelSvg } from './wheel.js';
 import { LEVELS, getLevel } from '../data/levels.js';
 import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
@@ -274,7 +274,7 @@ export function renderGame(app, L) {
     return `<div class="member ${m.alive ? '' : 'dead'} ${uid === app.uid ? 'me' : ''}">
       ${portrait(p.classId)}
       <div class="info">
-        <div class="nm">${esc(p.name)}${m.skillUsed ? '' : ' <span title="Compétence disponible">★</span>'}${m.pet && ITEMS[m.pet] ? ` <span title="${esc(ITEMS[m.pet].name)}">${ITEMS[m.pet].icon}${ITEMS[m.pet].shiny ? '✨' : ''}</span>` : ''}</div>
+        <div class="nm">${esc(p.name)}${m.pet && ITEMS[m.pet] ? ` <span title="${esc(ITEMS[m.pet].name)}">${ITEMS[m.pet].icon}${ITEMS[m.pet].shiny ? '✨' : ''}</span>` : ''}</div>
         <div class="sub"><span class="cls">${c.name || ''}</span><span>${m.alive ? `${m.hp}/${m.maxHp}` : '☠️'}</span>
           ${m.poison ? `<span title="Empoisonné">${STATUS.poison.icon}</span>` : ''}${g.blessed > 0 && m.alive ? `<span title="Béni">${STATUS.blessed.icon}</span>` : ''}
           ${boons ? `<span class="boons" title="Bonus de niveau">${boons}</span>` : ''}${p.online === false ? '<span>📴</span>' : ''}</div>
@@ -415,7 +415,7 @@ function renderResult(app, L, isHost) {
         <div class="small muted">d20 ${roll.d20} ${fmtMod(roll.mod)} ${STAT_LABELS[roll.stat]} = <b>${roll.total}</b> contre DD ${roll.dc}</div>
       </div>
     </div>` : ''}
-    ${r.spins ? spinsBlock(L.game, L.players || {}, r, app.uid) : ''}
+    ${r.spins ? spinsBlock(L.game, L.players || {}, r, app.uid, app.animatedResult !== `${L.seed}|${L.game.roomIndex}|${L.game.round}` || app.spinning === `${L.seed}|${L.game.roomIndex}|${L.game.round}`) : ''}
     <ul class="lines" data-lines>${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>
     <div class="action-bar">
       ${isHost ? '<button class="primary grow" data-action="continue">Continuer ▶</button>' : '<span class="muted small">En attente de l’hôte…</span>'}
@@ -458,13 +458,21 @@ export function tileChip(id, extra = '', attrs = '', selected = false) {
 
 /** Roue de la classe choisie (profil), corrigée selon les tuiles possédées. */
 export function currentWheel(app, classId) {
-  return sanitizeWheel(app.profile.wheels?.[classId] || [], app.profile.inventory || {});
+  const saved = app.profile.wheels?.[classId] || [];
+  const wheel = sanitizeWheel(saved, app.profile.inventory || {}, classId);
+  // l'ulti est reçu dès le niveau 1 : on le place d'office la première fois (remplace un « Raté »)
+  const ult = `ult_${classId}`;
+  if (saved.length && TILES[ult] && !wheel.includes(ult) && !app.profile.ultSeen?.[classId]) {
+    const i = wheel.lastIndexOf('t_rate');
+    wheel[i >= 0 ? i : WHEEL_SIZE - 1] = ult;
+  }
+  return wheel;
 }
 
 function wheelEditor(app, me) {
   const wheel = currentWheel(app, me.classId);
   const slot = Math.min(WHEEL_SIZE - 1, Math.max(0, app.wheelSlot || 0));
-  const owned = ownedTiles(app.profile.inventory || {});
+  const owned = ownedTiles(app.profile.inventory || {}, me.classId);
   const used = wheel.reduce((m, id) => ({ ...m, [id]: (m[id] || 0) + 1 }), {});
   const order = { commun: 0, rare: 1, epique: 2, legendaire: 3 };
   const ids = Object.keys(owned).filter((id) => TILES[id]).sort((a, b) => order[TILES[b].rarity] - order[TILES[a].rarity] || TILES[a].name.localeCompare(TILES[b].name));
@@ -494,18 +502,26 @@ function wheelEditor(app, me) {
     </div>`;
 }
 
-function spinsBlock(g, players, r, myUid) {
-  const spins = Object.values(r.spins || {}).map((x) => ({ uid: x.uid, picks: Object.values(x.picks || {}) }));
+function spinsBlock(g, players, r, myUid, animating = false) {
+  const spins = Object.values(r.spins || {}).map((x) => ({ uid: x.uid, picks: Object.values(x.picks || {}), ults: Object.values(x.ults || {}) }));
   const n = spins.length;
   const size = n <= 1 ? 210 : n === 2 ? 160 : 118;
   // la roue du joueur en premier
   spins.sort((a, b) => (b.uid === myUid) - (a.uid === myUid));
   return `<div class="spins n${Math.min(n, 4)}">${spins.map((sp) => {
-    const wheel = sanitizeWheel(g.party?.[sp.uid]?.wheel || []);
-    const got = sp.picks.map((i) => {
-      const t = TILES[wheel[i]];
-      return `<span class="got" data-got style="--tc:${tileColor(wheel[i])}">${t.icon} ${esc(t.name)}</span>`;
+    const wheel = sanitizeWheel(g.party?.[sp.uid]?.wheel || [], null, players[sp.uid]?.classId);
+    const chips = (w, picks) => picks.map((i) => {
+      const t = TILES[w[i]];
+      return `<span class="got" data-got style="--tc:${tileColor(w[i])}">${t.icon} ${esc(t.name)}</span>`;
     }).join('');
-    return `<div class="spin">${wheelSvg(wheel, { size, uid: sp.uid, label: esc(players[sp.uid]?.name || '') })}<div class="gots">${got}</div></div>`;
+    const main = `<div class="spin">${wheelSvg(wheel, { size, uid: sp.uid, label: esc(players[sp.uid]?.name || '') })}<div class="gots">${chips(wheel, sp.picks)}</div></div>`;
+    // roue d'ulti : apparaît quand la roue principale tombe sur la tuile d'ulti
+    const ults = sp.ults.map((u, k) => {
+      const def = ULT_WHEELS[u.wheel];
+      if (!def) return '';
+      const picks = Object.values(u.picks || {});
+      return `<div class="spin ult-spin ${animating ? 'hidden' : ''}">${wheelSvg(def.wheel, { size: Math.max(size, 150), uid: `${sp.uid}:u${k}`, label: `${def.icon} ${esc(def.name)} · ${picks.length} lancers` })}<div class="gots">${chips(def.wheel, picks)}</div></div>`;
+    }).join('');
+    return main + ults;
   }).join('')}</div>`;
 }

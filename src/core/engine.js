@@ -10,7 +10,7 @@ import { ITEMS, RARITY, SHINY_CHANCE } from '../data/items.js';
 import { getLevel, MAP_EXTRA_WEIGHTS } from '../data/levels.js';
 import { ENEMIES, EVENTS, COMBAT_ACTIONS } from '../data/events.js';
 import { heroBonus } from '../data/heroes.js';
-import { TILES, WHEEL_SIZE, SPINS_PER_ATTACK, sanitizeWheel } from '../data/wheel.js';
+import { TILES, WHEEL_SIZE, SPINS_PER_ATTACK, ULT_WHEELS, sanitizeWheel } from '../data/wheel.js';
 import { NODE_TYPES, ELITE, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
 
 export const VOTE_SECONDS = 30;
@@ -147,7 +147,7 @@ export function createGame(seed, levelId, players) {
     if (!p.classId) continue;
     const pet = ITEMS[p.companion]?.companion ? p.companion : null;
     const c = computeCharacter(p.classId, p.equipped || [], [], pet, p.heroLevel || 1);
-    party[uid] = { hp: c.maxHp, maxHp: c.maxHp, alive: true, skillUsed: false, poison: 0, boons: [], pet, wheel: sanitizeWheel(p.wheel) };
+    party[uid] = { hp: c.maxHp, maxHp: c.maxHp, alive: true, skillUsed: false, poison: 0, boons: [], pet, wheel: sanitizeWheel(p.wheel, null, p.classId) };
   }
   const rng = new Rng(`${seed}|entrance`);
   return {
@@ -549,8 +549,73 @@ function dmgBonusOf(players, uid, c) {
 }
 
 /**
- * Chaque héros vivant fait tourner sa roue 2 fois (plus avec « Encore ! »). Retourne les cases obtenues
- * (pour l'animation), si l'attaque ennemie est bloquée, et le héros qui a fait le plus de dégâts.
+ * Applique une tuile (roue principale ou roue d'ulti). mult : multiplicateur (Jackpot).
+ * Retourne { dealt, part, stat, guard }.
+ */
+function applyTile(game, players, uid, c, t, bonus, mult, halve) {
+  const e = ENEMIES[game.enemy.id];
+  const statMod = t.stat ? Math.max(0, c.stats[t.stat]) : 0;
+  const amount = (t.base || 0) + (t.mult || 1) * statMod;
+  const out = { dealt: 0, part: `${t.icon} ${t.name}`, stat: null, guard: false };
+  if (t.kind === 'dmg' || t.kind === 'smite' || t.kind === 'gold') {
+    const perHit = t.kind === 'gold' ? 2 : Math.max(1, amount + bonus);
+    let d = perHit * (t.hits || 1) * (t.undead && e.undead ? t.undead : 1) * mult;
+    if (halve) d = Math.ceil(d / 2);
+    game.enemy.hp -= d;
+    out.dealt = d;
+    out.stat = t.stat || null;
+    out.part += ` (${d})`;
+    if (t.kind === 'gold') game.gold = (game.gold || 0) + t.base * mult;
+    if (t.kind === 'smite') healAll(game, t.heal * mult, players, [], false);
+  } else if (t.kind === 'heal') {
+    healAll(game, amount * mult, players, [], !!t.cleanse);
+    out.part += ` (+${amount * mult} PV)`;
+    out.stat = 'sag';
+  } else if (t.kind === 'guard') {
+    out.guard = true;
+    if (t.base) healAll(game, t.base * mult, players, [], false);
+  } else if (t.kind === 'poison') {
+    game.enemy.poison = 3;
+    game.enemy.poisonDmg = Math.max(game.enemy.poisonDmg || 0, t.base * mult);
+  } else if (t.kind === 'bless') {
+    game.blessed = Math.max(game.blessed || 0, (t.base || 2) + 1);
+  } else if (t.kind === 'revive') {
+    const dead = Object.entries(game.party).find(([, m]) => !m.alive);
+    if (dead) {
+      const [du, m] = dead;
+      m.alive = true;
+      m.hp = Math.ceil(m.maxHp / 2);
+      m.poison = 0;
+      out.part += ` : ${players[du]?.name || 'un allié'} revient à la vie !`;
+      (game._revived ||= []).push(du);
+    } else {
+      healAll(game, t.base * mult, players, [], true);
+      out.part += ` (+${t.base * mult} PV)`;
+    }
+    out.stat = 'sag';
+  }
+  return out;
+}
+
+/** Lance une roue n fois (« Encore ! » / « Surcharge » ajoutent 2 lancers). Retourne les index obtenus. */
+function spinIndexes(rng, wheel, n, luck, cap) {
+  const picks = [];
+  let toSpin = n;
+  let rerolls = luck;
+  while (toSpin > 0 && picks.length < cap) {
+    let idx = rng.int(0, WHEEL_SIZE - 1);
+    if (TILES[wheel[idx]].kind === 'miss' && rerolls > 0) { rerolls -= 1; idx = rng.int(0, WHEEL_SIZE - 1); }
+    picks.push(idx);
+    toSpin -= 1;
+    if (TILES[wheel[idx]].kind === 'respin') toSpin += 2;
+  }
+  return picks;
+}
+
+/**
+ * Chaque héros vivant fait tourner sa roue 2 fois (plus avec « Encore ! »). Une tuile d'ulti fait apparaître
+ * la roue spéciale de la classe, lancée plusieurs fois. Retourne les cases obtenues (pour l'animation),
+ * si l'attaque ennemie est bloquée, et le héros qui a fait le plus de dégâts.
  */
 function spinWheels(game, players, rng, lines) {
   const e = ENEMIES[game.enemy.id];
@@ -560,53 +625,50 @@ function spinWheels(game, players, rng, lines) {
   let best = null, bestDmg = -1, bestStat = null;
   for (const [uid, m] of Object.entries(game.party)) {
     if (!m.alive || !players[uid]) continue;
-    const wheel = sanitizeWheel(m.wheel);
+    const classId = players[uid].classId;
+    const wheel = sanitizeWheel(m.wheel, null, classId);
     const c = charOf(game, players, uid);
-    const bonus = dmgBonusOf(players, uid, c) + (game.blessed > 0 ? 2 : 0) - (game.cursed ? 1 : 0);
-    let rerolls = c.luck; // chaque point de chance relance un « Raté »
-    let toSpin = SPINS_PER_ATTACK;
-    const picks = [];
-    while (toSpin > 0 && picks.length < 6) {
-      let idx = rng.int(0, WHEEL_SIZE - 1);
-      if (TILES[wheel[idx]].kind === 'miss' && rerolls > 0) { rerolls -= 1; idx = rng.int(0, WHEEL_SIZE - 1); }
-      picks.push(idx);
-      toSpin -= 1;
-      if (TILES[wheel[idx]].kind === 'respin') toSpin += 2;
-    }
+    const bonus = () => dmgBonusOf(players, uid, c) + (game.blessed > 0 ? 2 : 0) - (game.cursed ? 1 : 0);
+    const picks = spinIndexes(rng, wheel, SPINS_PER_ATTACK, c.luck, 6);
     const tiles = picks.map((i) => TILES[wheel[i]]);
     const jm = 2 ** tiles.filter((t) => t.kind === 'jackpot').length;
     let dealt = 0, mainStat = null;
     const parts = [];
+    const ults = [];
     for (const t of tiles) {
-      const statMod = t.stat ? Math.max(0, c.stats[t.stat]) : 0;
-      const amount = (t.base || 0) + (t.mult || 1) * statMod;
+      if (t.kind === 'ult') {
+        parts.push(`${t.icon} ${t.name} !`);
+        ults.push(t);
+        continue;
+      }
       const mult = t.kind === 'jackpot' || t.kind === 'respin' ? 1 : jm;
-      if (t.kind === 'dmg' || t.kind === 'smite' || t.kind === 'gold') {
-        const perHit = t.kind === 'gold' ? 2 : Math.max(1, amount + bonus);
-        let d = perHit * (t.hits || 1) * (t.undead && e.undead ? t.undead : 1) * mult;
-        if (halve) d = Math.ceil(d / 2);
-        game.enemy.hp -= d;
-        dealt += d;
-        if (t.stat && (!mainStat || d > 0)) mainStat = t.stat;
-        parts.push(`${t.icon} ${t.name} (${d})`);
-        if (t.kind === 'gold') game.gold = (game.gold || 0) + t.base * mult;
-        if (t.kind === 'smite') healAll(game, t.heal * mult, players, [], false);
-      } else if (t.kind === 'heal') {
-        healAll(game, amount * mult, players, [], !!t.cleanse);
-        parts.push(`${t.icon} ${t.name} (+${amount * mult} PV)`);
-        mainStat ||= 'sag';
-      } else if (t.kind === 'guard') {
-        guarded = true;
-        if (t.base) healAll(game, t.base * mult, players, [], false);
-        parts.push(`${t.icon} ${t.name}`);
-      } else if (t.kind === 'poison') {
-        game.enemy.poison = 3;
-        game.enemy.poisonDmg = Math.max(game.enemy.poisonDmg || 0, t.base * mult);
-        parts.push(`${t.icon} ${t.name}`);
-      } else parts.push(`${t.icon} ${t.name}`);
+      const r = applyTile(game, players, uid, c, t, bonus(), mult, halve);
+      dealt += r.dealt;
+      guarded ||= r.guard;
+      if (r.stat && (!mainStat || r.dealt > 0)) mainStat = r.stat;
+      parts.push(r.part);
     }
     lines.push(`🎡 ${players[uid].name} : ${parts.join(' + ')}${dealt ? ` → ${dealt} dégâts` : ''}`);
-    spins.push({ uid, picks });
+    // Ultis : la roue spéciale de la classe
+    const ultSpins = [];
+    for (const t of ults) {
+      const def = ULT_WHEELS[t.ult];
+      const up = spinIndexes(rng, def.wheel, def.spins, 0, def.spins + 6);
+      let ud = 0;
+      const uparts = [];
+      for (const i of up) {
+        const ut = TILES[def.wheel[i]];
+        const r = applyTile(game, players, uid, c, ut, bonus(), jm, halve);
+        ud += r.dealt;
+        guarded ||= r.guard;
+        if (r.stat && r.dealt > 0) mainStat = r.stat;
+        uparts.push(r.part);
+      }
+      dealt += ud;
+      lines.push(`${def.icon} ${def.name} (${up.length} lancers) : ${uparts.join(' + ')}${ud ? ` → ${ud} dégâts` : ''}`);
+      ultSpins.push({ wheel: t.ult, picks: up });
+    }
+    spins.push({ uid, picks, ...(ultSpins.length ? { ults: ultSpins } : {}) });
     if (dealt > bestDmg) { bestDmg = dealt; best = uid; bestStat = mainStat; }
   }
   if (halve) lines.push(`🛡️ ${e.name} se protège : dégâts divisés par deux.`);
@@ -831,9 +893,9 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   const anyAlive = Object.values(game.party).some((m) => m.alive);
   game.lastResult = {
     label, lines, roll: rollRes, championUid, roomDone, choiceId, spins, stat: spinStat, enemyBefore,
-    hurt: game._hurt || [], poisoned: game._poisoned || [], healed: !!game._healed, enemyAction, pets: game._pets || [],
+    hurt: game._hurt || [], poisoned: game._poisoned || [], revived: game._revived || [], healed: !!game._healed, enemyAction, pets: game._pets || [],
   };
-  delete game._hurt; delete game._poisoned; delete game._healed; delete game._pets;
+  delete game._hurt; delete game._poisoned; delete game._healed; delete game._pets; delete game._revived;
   game.phase = 'result';
   game.votes = {};
   if (!anyAlive) game.outcome = 'defeat';
@@ -872,7 +934,7 @@ export function advance(gameIn, seed = '') {
       game.picks = {};
       for (const [uid, m] of Object.entries(game.party)) {
         if (!m.alive) continue;
-        const pool = Object.keys(BOONS).filter((id) => id !== 'second_souffle' || m.skillUsed);
+        const pool = Object.keys(BOONS).filter((id) => id !== 'second_souffle');
         const offer = [];
         while (offer.length < 3 && pool.length) offer.push(pool.splice(rng.int(0, pool.length - 1), 1)[0]);
         game.offers[uid] = offer;

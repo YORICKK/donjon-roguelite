@@ -89,7 +89,7 @@ function targetAngle(current, idx, turns) {
  * Anime les lancers : spins = [{ uid, picks: [index…] }]. Toutes les roues tournent en même temps,
  * un lancer après l'autre. Appelle onStep(uid, k, idx) à chaque arrêt et onDone() à la fin.
  */
-export function animateWheels(root, spins, { onStep, onDone, duration = 1700 } = {}) {
+export function animateWheels(root, spins, { onStep, onDone, duration = 1700, gap = 450 } = {}) {
   const els = spins.map((s) => ({ s, el: root.querySelector(`[data-wheel="${CSS.escape(s.uid)}"]`) })).filter((x) => x.el);
   const rounds = Math.max(0, ...spins.map((s) => s.picks.length));
   let k = 0;
@@ -102,7 +102,7 @@ export function animateWheels(root, spins, { onStep, onDone, duration = 1700 } =
       if (idx === undefined || !rot) continue;
       el.querySelectorAll('.seg.win').forEach((g) => g.classList.remove('win'));
       el.classList.add('spinning');
-      const a = targetAngle(angles.get(s.uid) || 0, idx, 4 + Math.floor(Math.random() * 2));
+      const a = targetAngle(angles.get(s.uid) || 0, idx, duration < 1000 ? 2 : 4 + Math.floor(Math.random() * 2));
       angles.set(s.uid, a);
       rot.style.transition = `transform ${duration}ms cubic-bezier(0.12, 0.72, 0.1, 1)`;
       rot.style.transform = `rotate(${a}deg)`;
@@ -117,7 +117,7 @@ export function animateWheels(root, spins, { onStep, onDone, duration = 1700 } =
         onStep?.(s.uid, k, idx);
       }
       k += 1;
-      setTimeout(step, 450);
+      setTimeout(step, gap);
     }, duration + 60);
   };
   step();
