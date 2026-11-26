@@ -53,6 +53,18 @@ THEMES.forge = {
   fog: [5, 26],
 };
 
+// Niveau 5 : le sanctuaire flotte dans le vide, cristaux partout, poussière d'étoiles.
+THEMES.astral = {
+  walls: ['sanctum_wall_0', 'sanctum_wall_1'],
+  floors: ['sanctum_floor_1', 'sanctum_floor_0'],
+  pillar: 'obelisk',
+  alongWalls: ['crystal_purple', 'statue', 'crystal_purple', 'candles'],
+  corners: ['crystal_purple', 'urn', 'crystal_purple', 'candles'],
+  floating: ['rune_stone', 'crystal_purple'],
+  particles: { color: 0xbfd0ff, count: 220, size: 0.05, speed: 0.03, rise: 0.04, additive: true },
+  fog: [6, 32],
+};
+
 /** Décor ajouté selon le type de salle, quel que soit le biome. */
 export const ROOM_DRESSING = {
   rest: ['bedroll', 'bedroll', 'table_set'],

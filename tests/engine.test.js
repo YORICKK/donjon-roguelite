@@ -274,7 +274,7 @@ test('roue de combat : 2 lancers, roue de départ commune, tuiles limitées aux 
 
 test('ultis : chaque classe a sa tuile, sa roue apparaît et tourne plusieurs fois', async () => {
   const { classStarterWheel, ULT_WHEELS, TILES, sanitizeWheel } = await import('../src/data/wheel.js');
-  for (const cls of ['guerrier', 'mage', 'voleur', 'clerc']) {
+  for (const cls of Object.keys(CLASSES)) {
     assert.ok(classStarterWheel(cls).includes(`ult_${cls}`), `${cls} reçoit son ulti`);
     // l'ulti d'une autre classe n'est pas accepté
     const other = cls === 'mage' ? 'guerrier' : 'mage';

@@ -55,6 +55,11 @@ export const TILES = {
 };
 // Tuile de niveau 4
 TILES.t_souffle = { name: 'Souffle du dragon', icon: '🐲', rarity: 'legendaire', tier: 4, kind: 'dmg', base: 22, text: '22 dégâts, quelle que soit la classe' };
+// Nouvelles tuiles (niveaux 2 et 5)
+TILES.t_vampire = { name: 'Morsure vampirique', icon: '🦇', rarity: 'rare', tier: 2, kind: 'smite', stat: 'int', base: 3, heal: 2, text: '3 + INT et soigne le groupe de 2' };
+TILES.t_eclipse = { name: 'Éclipse', icon: '🌑', rarity: 'epique', tier: 5, kind: 'guard', base: 6, text: "Bloque l'attaque et soigne le groupe de 6" };
+TILES.t_trou_noir = { name: 'Trou noir', icon: '🌌', rarity: 'legendaire', tier: 5, kind: 'dmg', base: 28, text: '28 dégâts, quelle que soit la classe' };
+TILES.t_comete = { name: 'Comète', icon: '☄️', rarity: 'legendaire', tier: 5, kind: 'dmg', stat: 'dex', base: 6, hits: 3, text: '3 coups de 6 + DEX' };
 
 // ---------- Ultis : la compétence de chaque classe est une tuile, reçue dès le niveau 1 du héros ----------
 // En tombant dessus, une roue spéciale propre à la classe apparaît et tourne plusieurs fois.
@@ -63,6 +68,7 @@ const ULT_TILES = {
   ult_mage: { name: 'Arcanes', icon: '🔮', class: 'mage', ult: 'arcanes', text: 'Ulti : la roue des arcanes apparaît (3 lancers de sorts)' },
   ult_voleur: { name: 'Assassin', icon: '🎭', class: 'voleur', ult: 'assassin', text: "Ulti : la roue de l'assassin apparaît (7 lancers, peu de dégâts… sauf le point vital)" },
   ult_clerc: { name: 'Grâce divine', icon: '👼', class: 'clerc', ult: 'sacree', text: 'Ulti : la roue sacrée apparaît (3 lancers : soins, jugement, résurrection)' },
+  ult_necromancien: { name: 'Danse macabre', icon: '⚰️', class: 'necromancien', ult: 'macabre', text: 'Ulti : la roue macabre apparaît (4 lancers : drain de vie, peste, Moisson des âmes)' },
 };
 for (const [id, t] of Object.entries(ULT_TILES)) TILES[id] = { ...t, rarity: 'legendaire', kind: 'ult', ultTile: true };
 
@@ -93,6 +99,13 @@ const U = {
   u_jugement: { name: 'Jugement', icon: '⚖️', kind: 'dmg', stat: 'sag', base: 8, mult: 2, undead: 2, text: '8 + 2 × SAG, ×2 contre les morts-vivants' },
   u_bouclier: { name: 'Bouclier divin', icon: '🛡️', kind: 'guard', base: 3, text: "Bloque l'attaque et soigne le groupe de 3" },
   u_benediction: { name: 'Bénédiction', icon: '✨', kind: 'bless', base: 2, text: 'Béni 2 tours : +2 dégâts par tuile' },
+  // macabre : vol de vie
+  u_moisson: { name: 'Moisson des âmes', icon: '👻', kind: 'dmg', stat: 'int', base: 16, mult: 3, text: '16 + 3 × INT' },
+  u_drain: { name: 'Drain de vie', icon: '🦇', kind: 'smite', stat: 'int', base: 5, heal: 3, text: '5 + INT et soigne le groupe de 3' },
+  u_os: { name: "Éclats d'os", icon: '💀', kind: 'dmg', stat: 'int', base: 2, hits: 3, text: '3 éclats de 2 + INT' },
+  u_mur_os: { name: "Mur d'ossements", icon: '⛓️', kind: 'guard', base: 2, text: "Bloque l'attaque et soigne le groupe de 2" },
+  u_peste: { name: 'Peste', icon: '☣️', kind: 'poison', base: 6, text: "Empoisonne l'ennemi : 6 × 3 tours" },
+  u_relever: { name: 'Relever les morts', icon: '⚱️', kind: 'revive', base: 6, text: 'Ramène un allié mort à mi-vie (sinon soigne le groupe de 6)' },
 };
 for (const [id, t] of Object.entries(U)) TILES[id] = { ...t, rarity: 'legendaire', ultOnly: true };
 
@@ -102,6 +115,7 @@ export const ULT_WHEELS = {
   arcanes: { name: 'Roue des arcanes', icon: '🔮', spins: 3, wheel: ['u_nova', 'u_boule', 'u_gel', 'u_foudre', 'u_boule', 'u_surcharge', 'u_foudre', 'u_rate'] },
   assassin: { name: "Roue de l'assassin", icon: '🎭', spins: 7, wheel: ['u_point_vital', 'u_entaille', 'u_entaille', 'u_vol', 'u_entaille', 'u_esquive', 'u_saignee', 'u_rate'] },
   sacree: { name: 'Roue sacrée', icon: '👼', spins: 3, wheel: ['u_resurrection', 'u_soin', 'u_jugement', 'u_bouclier', 'u_soin', 'u_benediction', 'u_jugement', 'u_rate'] },
+  macabre: { name: 'Roue macabre', icon: '⚰️', spins: 4, wheel: ['u_moisson', 'u_drain', 'u_os', 'u_mur_os', 'u_drain', 'u_peste', 'u_relever', 'u_rate'] },
 };
 
 for (const [id, t] of Object.entries(TILES)) { t.id = id; t.tile = true; t.tier ||= 1; }

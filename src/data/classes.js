@@ -1,6 +1,7 @@
 // Classes jouables. Stats = modificateurs façon D&D (ajoutés au d20).
 // skill : l'ulti de la classe. C'est une tuile de roue (data/wheel.js, ult_<classe>) reçue dès le niveau 1 :
 // en tombant dessus, une roue spéciale apparaît. on : [] (plus de choix « compétence » à part).
+// model / look : modèle 3D réutilisé et recoloré ; portrait / portraitFilter : portrait réutilisé, filtre CSS.
 export const CLASSES = {
   guerrier: {
     id: 'guerrier', name: 'Guerrier', icon: '⚔️', color: '#c0392b',
@@ -25,6 +26,14 @@ export const CLASSES = {
     desc: 'Soigne le groupe et repousse les morts-vivants.',
     stats: { for: 1, dex: -1, int: 0, sag: 3 }, hp: 13, dmg: 6,
     skill: { id: 'sacree', name: 'Ulti : Grâce divine', desc: 'Tuile de roue : la roue sacrée soigne, juge les morts-vivants et peut ressusciter.', on: [] },
+  },
+  necromancien: {
+    id: 'necromancien', name: 'Nécromancien', icon: '💀', color: '#8e44ad',
+    desc: 'Draine la vie de ses ennemis et relève les morts.',
+    stats: { for: 0, dex: -1, int: 2, sag: 2 }, hp: 11, dmg: 6,
+    model: 'hero_mage', look: { hue: 0.38, sat: 0.45, light: 0.42, glow: 0x30ff70 },
+    portrait: 'mage', portraitFilter: 'hue-rotate(260deg) saturate(0.9) brightness(0.72) contrast(1.15)',
+    skill: { id: 'macabre', name: 'Ulti : Danse macabre', desc: 'Tuile de roue : la roue macabre tourne 4 fois. Drain de vie, peste, os… et Moisson des âmes.', on: [] },
   },
 };
 

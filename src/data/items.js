@@ -23,9 +23,13 @@ export const ITEMS = {
   baton_archimage: { name: "Bâton d'archimage", icon: '🪄', rarity: 'legendaire', tier: 3, bonus: { int: 3, dmg: 4 } },
   couronne_liche: { name: 'Couronne de la liche', icon: '👑', rarity: 'legendaire', tier: 3, bonus: { sag: 2, int: 2, hp: 4 } },
   ecaille_dragon: { name: 'Écaille du Dragon-Roi', icon: '🐉', rarity: 'legendaire', tier: 4, bonus: { for: 1, dex: 1, int: 1, sag: 1, hp: 8 } },
+  // Niveau 5
+  couronne_neant: { name: 'Couronne du Néant', icon: '👑', rarity: 'legendaire', tier: 5, bonus: { int: 2, sag: 2, hp: 6, dmg: 2 } },
+  lame_astrale: { name: 'Lame astrale', icon: '🌠', rarity: 'legendaire', tier: 5, bonus: { for: 2, dex: 2, dmg: 3 } },
+  talisman_os: { name: "Talisman d'os", icon: '📿', rarity: 'epique', tier: 3, bonus: { int: 1, sag: 1, hp: 3 } },
 
   // ---------- Compagnons : conservés comme des objets, un seul par joueur au début d'un run ----------
-  // power : effet en jeu (voir engine.js) ; model : nœud du fichier companions.glb.
+  // power : effet en jeu (voir engine.js) ; model : nœud du fichier companions.glb (look : recoloration, scale : taille).
   pet_ecureuil: {
     name: 'Écureuil', icon: '🐿️', rarity: 'commun', tier: 1, companion: true, model: 'pet_ecureuil', power: 'useless',
     desc: 'Totalement inutile. Mais tellement mignon.',
@@ -46,6 +50,21 @@ export const ITEMS = {
     name: 'Dragonnet', icon: '🐉', rarity: 'legendaire', tier: 3, companion: true, model: 'pet_dragon', power: 'breath',
     desc: 'Souffle du feu sur chaque ennemi rencontré (2d6 + 2 par niveau).',
   },
+  pet_chat: {
+    name: 'Chat noir', icon: '🐈', rarity: 'rare', tier: 2, companion: true, model: 'pet_loup', scale: 0.6, power: 'luck',
+    look: { hue: 0.75, sat: 0.25, light: 0.4, glow: 0x7a3cff }, bonus: { luck: 1 },
+    desc: 'Porte-malheur… pour les autres : +1 chance (relance un « Raté » de plus, +1 aux jets).',
+  },
+  pet_golem: {
+    name: 'Golem de poche', icon: '🗿', rarity: 'epique', tier: 3, companion: true, model: 'pet_ours', scale: 0.65, power: 'thorns',
+    look: { hue: 0.58, sat: 0.12, light: 0.95, glow: 0x5a8cff }, bonus: { hp: 2 },
+    desc: 'Riposte : renvoie 3 dégâts à chaque coup que reçoit son maître, +2 PV.',
+  },
+  pet_phenix: {
+    name: 'Phénix', icon: '🦅', rarity: 'legendaire', tier: 4, companion: true, model: 'pet_dragon', scale: 0.9, power: 'phoenix',
+    look: { hue: 0.07, sat: 1, light: 1.3, glow: 0xff8a00 },
+    desc: 'Ses flammes soignent : le groupe récupère 2 PV (+1 tous les 2 niveaux) à chaque tour de combat.',
+  },
 };
 
 // ---------- Variantes chromatiques des compagnons ----------
@@ -58,6 +77,9 @@ const SHINY_LOOKS = {
   pet_loup: { label: 'arctique', hue: 0.54, sat: 0.85, light: 1.7, glow: 0x30d8ff, sparkle: 0xaef4ff },
   pet_ours: { label: 'cosmique', hue: 0.76, sat: 0.9, light: 1.3, glow: 0x9b4dff, sparkle: 0xd2a8ff },
   pet_dragon: { label: 'émeraude', hue: 0.37, sat: 1, light: 1.25, glow: 0x2dff7a, sparkle: 0xb6ffcf },
+  pet_chat: { label: 'de lune', hue: 0.6, sat: 0.2, light: 1.8, glow: 0xbfe0ff, sparkle: 0xffffff },
+  pet_golem: { label: 'de cristal', hue: 0.5, sat: 0.9, light: 1.4, glow: 0x30e0ff, sparkle: 0xaef8ff },
+  pet_phenix: { label: 'de glace', hue: 0.55, sat: 0.9, light: 1.5, glow: 0x40c0ff, sparkle: 0xd0f4ff },
 };
 for (const [id, look] of Object.entries(SHINY_LOOKS)) {
   const base = ITEMS[id];

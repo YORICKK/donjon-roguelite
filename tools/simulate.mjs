@@ -13,10 +13,9 @@ import { CLASSES } from '../src/data/classes.js';
 import { LEVELS } from '../src/data/levels.js';
 import { ENEMIES } from '../src/data/events.js';
 import { BOONS } from '../src/data/run.js';
-import { heroLevel } from '../src/data/heroes.js';
+import { heroLevel, MAIN_STAT } from '../src/data/heroes.js';
 import { TILES, WHEEL_SIZE, STARTER_WHEEL, ULT_WHEELS, ownedTiles, classStarterWheel } from '../src/data/wheel.js';
 
-const MAIN_STAT = { guerrier: 'for', mage: 'int', voleur: 'dex', clerc: 'sag' };
 
 // ---------- Politique du bot ----------
 function hpRatio(g) {
@@ -165,10 +164,10 @@ export function bestWheel(classId, inventory) {
   return wheel;
 }
 
-const PET_RANK = { pet_dragon: 5, pet_ours: 4, pet_loup: 3, pet_chien: 2, pet_ecureuil: 1 };
+const PET_RANK = { pet_phenix: 7, pet_dragon: 6, pet_golem: 5, pet_ours: 4, pet_chat: 3.5, pet_loup: 3, pet_chien: 2, pet_ecureuil: 1 };
 function bestPet(owned) {
   const pets = owned.filter((id) => ITEMS[id].companion).map((id) => ITEMS[id].variantOf || id);
-  return pets.sort((a, b) => PET_RANK[b] - PET_RANK[a])[0] || null;
+  return pets.sort((a, b) => (PET_RANK[b] || 0) - (PET_RANK[a] || 0))[0] || null;
 }
 
 export function winRate(classId, levelId, equipped, companion, N, tag, wheel = classStarterWheel(classId), heroLv = 1) {
@@ -208,7 +207,7 @@ function report() {
 const pct = (x) => `${Math.round(x * 100)} %`.padStart(5);
 const BEST = {
   guerrier: ['epee_runique', 'couronne_liche'], mage: ['baton_archimage', 'couronne_liche'],
-  voleur: ['cape_ombre', 'epee_runique'], clerc: ['couronne_liche', 'epee_runique'],
+  voleur: ['cape_ombre', 'epee_runique'], clerc: ['couronne_liche', 'epee_runique'], necromancien: ['baton_archimage', 'couronne_liche'],
 };
 const N = Number(process.argv[2]) || 300;
 const RANK = { commun: 0, rare: 1, epique: 2, legendaire: 3 };

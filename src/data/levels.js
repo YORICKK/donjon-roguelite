@@ -3,26 +3,27 @@
 // dcBonus : ajouté à tous les DD. enemyScale : multiplie PV et dégâts des ennemis.
 // lootTable : poids de tirage par rareté. rooms : nombre de salles avant le boss.
 // Un niveau N se débloque quand le joueur a vaincu le boss du niveau N-1.
+// bosses : gardiens possibles (tiré au sort à chaque run) ; boss : le gardien principal.
 export const LEVELS = [
   {
     id: 1, name: 'Les Cryptes oubliées', theme: 'crypt', rooms: 4, dcBonus: 0, enemyScale: 1,
     palette: { floor: 0x4a4038, wall: 0x6b5d50, fog: 0x0d0a08, torch: 0xff9944 },
     weights: { combat: 3, trap: 2, chest: 2, shrine: 1, npc: 1, rest: 1 },
-    enemies: ['rat_geant', 'squelette', 'gobelin'], boss: 'chef_gobelin',
+    enemies: ['rat_geant', 'squelette', 'gobelin'], boss: 'chef_gobelin', bosses: ['chef_gobelin', 'reine_rats'],
     lootTable: { commun: 70, rare: 28, epique: 2, legendaire: 0 },
   },
   {
     id: 2, name: 'Les Mines profondes', theme: 'mine', rooms: 5, dcBonus: 2, enemyScale: 1.4,
     palette: { floor: 0x4a4038, wall: 0x5a4c3e, fog: 0x080604, torch: 0xffb060 },
     weights: { combat: 4, trap: 2, chest: 2, shrine: 1, npc: 1, rest: 1 },
-    enemies: ['squelette', 'gobelin', 'ogre'], boss: 'golem',
+    enemies: ['squelette', 'gobelin', 'ogre'], boss: 'golem', bosses: ['golem', 'roi_ogre'],
     lootTable: { commun: 35, rare: 45, epique: 18, legendaire: 2 },
   },
   {
     id: 3, name: 'Le Sanctuaire de la Liche', theme: 'sanctum', rooms: 6, dcBonus: 4, enemyScale: 1.9,
     palette: { floor: 0x2c2238, wall: 0x45365a, fog: 0x07040c, torch: 0xaa66ff },
     weights: { combat: 5, trap: 2, chest: 2, shrine: 1, npc: 1, rest: 1 },
-    enemies: ['ogre', 'spectre', 'squelette'], boss: 'liche',
+    enemies: ['ogre', 'spectre', 'squelette'], boss: 'liche', bosses: ['liche', 'chevalier_mort'],
     lootTable: { commun: 10, rare: 40, epique: 38, legendaire: 12 },
   },
   {
@@ -31,6 +32,14 @@ export const LEVELS = [
     weights: { combat: 5, trap: 2, chest: 2, shrine: 1, npc: 1, rest: 1 },
     enemies: ['salamandre', 'demon_lave', 'spectre_cendre', 'golem_magma'], boss: 'dragon_roi',
     lootTable: { commun: 5, rare: 25, epique: 45, legendaire: 25 },
+  },
+  {
+    id: 5, name: 'Le Néant astral', theme: 'astral', rooms: 8, dcBonus: 6, enemyScale: 2.6,
+    palette: { floor: 0x1c1a33, wall: 0x2a2550, fog: 0x030210, torch: 0x8a6aff },
+    weights: { combat: 5, trap: 2, chest: 2, shrine: 1, npc: 1, rest: 1 },
+    enemies: ['ombre_astrale', 'chevalier_vide', 'horreur_astrale', 'gardien_cristal'],
+    boss: 'vorath', bosses: ['vorath', 'colosse_astral'],
+    lootTable: { commun: 0, rare: 15, epique: 45, legendaire: 40 },
   },
 ];
 

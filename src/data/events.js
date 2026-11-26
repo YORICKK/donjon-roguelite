@@ -15,6 +15,17 @@ export const ENEMIES = {
   spectre_cendre: { name: 'Spectre de cendres', hp: 14, dmg: 7, dc: 14, color: 0xffa060, shape: 'ghost', undead: true, model: 'enemy_spectre', look: { hue: 0.07, sat: 0.9, light: 1.3, glow: 0xff7a20 }, xp: 11, gold: [10, 18], intents: { attack: 3, poison: 2, defend: 1 } },
   golem_magma: { name: 'Golem de magma', hp: 24, dmg: 9, dc: 15, color: 0x8a3a1a, shape: 'brute', model: 'enemy_golem', scale: 0.8, look: { hue: 0.04, sat: 0.85, light: 0.9, glow: 0xff4500 }, xp: 15, gold: [14, 26], intents: { attack: 2, heavy: 2, defend: 1 } },
   dragon_roi: { name: 'Ignar, le Dragon-Roi', hp: 46, dmg: 11, dc: 16, color: 0x9b1d0f, shape: 'brute', boss: true, model: 'pet_dragon', scale: 4.2, look: { hue: 0.97, sat: 0.7, light: 0.62, glow: 0xff3000 }, xp: 60, gold: [90, 140], intents: { attack: 3, heavy: 3, poison: 1, enrage: 1 } },
+  // Boss alternatifs : chaque niveau tire son gardien dans levels.js (bosses).
+  reine_rats: { name: 'La Reine des rats', hp: 20, dmg: 4, dc: 12, color: 0x6a3d8f, shape: 'rat', boss: true, model: 'enemy_rat_geant', scale: 2.6, look: { hue: 0.8, sat: 0.55, light: 0.85, glow: 0x9b30ff }, xp: 22, gold: [25, 40], intents: { attack: 3, poison: 3, enrage: 1 } },
+  roi_ogre: { name: 'Grok, le Roi ogre', hp: 32, dmg: 8, dc: 13, color: 0xb08a2e, shape: 'brute', boss: true, model: 'enemy_ogre', scale: 1.55, look: { hue: 0.11, sat: 0.8, light: 1.1, glow: 0xffaa00 }, xp: 32, gold: [40, 65], intents: { attack: 2, heavy: 3, enrage: 2 } },
+  chevalier_mort: { name: 'Le Chevalier de la mort', hp: 38, dmg: 11, dc: 15, color: 0x2c3e70, shape: 'humanoid', boss: true, undead: true, model: 'enemy_squelette', scale: 1.7, look: { hue: 0.62, sat: 0.6, light: 0.6, glow: 0x3060ff }, xp: 42, gold: [60, 90], intents: { attack: 3, heavy: 3, defend: 1, drain: 1 } },
+  // Niveau 5 : le Néant astral
+  ombre_astrale: { name: 'Ombre astrale', hp: 16, dmg: 8, dc: 15, color: 0x7a3cff, shape: 'ghost', undead: true, model: 'enemy_spectre', look: { hue: 0.72, sat: 0.9, light: 1.2, glow: 0x7a3cff }, xp: 13, gold: [12, 22], intents: { attack: 3, poison: 2, drain: 1 } },
+  chevalier_vide: { name: 'Chevalier du vide', hp: 22, dmg: 9, dc: 16, color: 0x3a3aa0, shape: 'humanoid', undead: true, model: 'enemy_squelette', scale: 1.25, look: { hue: 0.67, sat: 0.7, light: 0.7, glow: 0x4040ff }, xp: 15, gold: [14, 26], intents: { attack: 3, defend: 2, heavy: 1 } },
+  horreur_astrale: { name: 'Horreur astrale', hp: 26, dmg: 10, dc: 16, color: 0x9b30c0, shape: 'brute', model: 'enemy_ogre', scale: 1.1, look: { hue: 0.8, sat: 0.8, light: 0.8, glow: 0xc040ff }, xp: 17, gold: [16, 28], intents: { attack: 2, heavy: 2, enrage: 1, drain: 1 } },
+  gardien_cristal: { name: 'Gardien de cristal', hp: 28, dmg: 9, dc: 16, color: 0x30c0e0, shape: 'brute', model: 'enemy_golem', scale: 0.8, look: { hue: 0.5, sat: 0.9, light: 1.3, glow: 0x30e0ff }, xp: 16, gold: [16, 28], intents: { attack: 2, heavy: 1, defend: 2 } },
+  vorath: { name: "Vorath, le Dévoreur d'étoiles", hp: 54, dmg: 12, dc: 17, color: 0x5a1a9b, shape: 'ghost', boss: true, model: 'enemy_liche', scale: 2.0, look: { hue: 0.76, sat: 1, light: 0.9, glow: 0x9b30ff }, xp: 80, gold: [120, 180], intents: { attack: 3, heavy: 3, drain: 2, enrage: 1 } },
+  colosse_astral: { name: 'Le Colosse astral', hp: 60, dmg: 11, dc: 17, color: 0x2a8cc0, shape: 'brute', boss: true, model: 'enemy_golem', scale: 1.35, look: { hue: 0.55, sat: 0.95, light: 1.1, glow: 0x30c8ff }, xp: 80, gold: [120, 180], intents: { attack: 2, heavy: 3, defend: 2, drain: 1 } },
   liche: { name: 'La Liche', hp: 40, dmg: 10, dc: 15, color: 0xb388ff, shape: 'ghost', boss: true, undead: true, xp: 40, gold: [60, 90], intents: { attack: 3, heavy: 2, poison: 2, enrage: 1 } },
 };
 
@@ -27,6 +38,7 @@ export const INTENTS = {
   defend: { icon: '🛡️', label: 'Se protège (dégâts ÷2)' },
   poison: { icon: '🧪', label: 'Attaque empoisonnée' },
   enrage: { icon: '😡', label: 'Entre en rage (+2 dégâts)' },
+  drain: { icon: '🦇', label: 'Draine la vie (se soigne)' },
 };
 
 // Actions de combat de base (toujours proposées). dcMod : ajusté au DD de l'ennemi.

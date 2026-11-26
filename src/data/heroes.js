@@ -7,7 +7,7 @@ export const HERO_XP = [0, 30, 75, 135, 210, 300, 410, 540, 690, 860];
 export const HERO_MAX = HERO_XP.length;
 
 /** Stat principale de chaque classe (reçoit les bonus de niveau « stat »). */
-export const MAIN_STAT = { guerrier: 'for', mage: 'int', voleur: 'dex', clerc: 'sag' };
+export const MAIN_STAT = { guerrier: 'for', mage: 'int', voleur: 'dex', clerc: 'sag', necromancien: 'int' };
 const STAT_LABEL = { for: 'FOR', dex: 'DEX', int: 'INT', sag: 'SAG' };
 
 /** Bonus débloqué en atteignant chaque niveau (2 à 10), cumulatif. */

@@ -8,6 +8,7 @@ import { Animator } from './anim.js';
 import { Fx } from './fx.js';
 import { getTheme, ROOM_DRESSING } from '../data/themes.js';
 import { ITEMS } from '../data/items.js';
+import { CLASSES } from '../data/classes.js';
 
 const SPACING = 20; // distance entre centres de salles
 
@@ -175,8 +176,10 @@ export function createDungeonScene(canvas) {
     // Héros de part et d'autre de l'axe central, pour laisser voir l'ennemi ou l'objet.
     const SLOTS = [[-1.15, 0], [1.15, 0], [-2.0, -1.0], [2.0, -1.0]];
     members.forEach((m, idx) => {
-      const model = kit.pieces[`hero_${m.classId}`];
+      const cls = CLASSES[m.classId];
+      const model = kit.pieces[cls?.model || `hero_${m.classId}`];
       const obj = model ? cloneModel(model) : new THREE.Group();
+      if (model && cls?.look) applyShinyLook(obj, cls.look, `hero_${m.classId}`); // classe au modèle réutilisé
       castShadows(obj);
       const [x, z] = SLOTS[idx % SLOTS.length];
       obj.position.set(x, 0, z);
@@ -190,17 +193,17 @@ export function createDungeonScene(canvas) {
       const petDef = ITEMS[m.pet];
       if (petDef?.companion && kit.pieces[petDef.model]) {
         const pobj = cloneModel(kit.pieces[petDef.model]);
-        if (petDef.look) applyShinyLook(pobj, petDef.look, petDef.model); // variante chromatique
+        if (petDef.look) applyShinyLook(pobj, petDef.look, m.pet); // recoloration / variante chromatique
         castShadows(pobj);
         // devant son maître, vers le centre : la caméra plongeante le montre sous l'ennemi
         pobj.position.set(x * 0.6, 0, z - 0.9);
         pobj.rotation.y = obj.rotation.y;
-        pobj.scale.setScalar({ useless: 1.8, guard: 0.8 }[petDef.power] || 1);
+        pobj.scale.setScalar(petDef.scale || { useless: 1.8, guard: 0.8 }[petDef.power] || 1);
         partyGroup.add(pobj);
         pet = {
           obj: pobj, anim: new Animator(pobj), power: petDef.power, sparkle: petDef.look?.sparkle, sparkleT: Math.random(),
           // le dragonnet alterne vol et sol
-          flyer: petDef.power === 'breath', mode: 'ground', modeT: 3 + Math.random() * 4, curY: 0,
+          flyer: petDef.model === 'pet_dragon', mode: 'ground', modeT: 3 + Math.random() * 4, curY: 0,
         };
       }
       heroes.push({ ...m, obj, lunge: 0, anim, pet });
@@ -370,6 +373,11 @@ export function createDungeonScene(canvas) {
           fx.burst(worldPos(h.pet.obj, 0.2), 0xffd36b, { count: 24, speed: 2, up: 3, life: 1 });
         } else if (kind === 'guard') {
           fx.ring(worldPos(h.obj, 0), 0xb07a3c, { radius: 1, life: 0.6 });
+        } else if (kind === 'thorns' && enemy) {
+          fx.projectile(at, worldPos(enemy, 1), 0x8fb0ff, { duration: 0.35, size: 0.2 });
+          later(350, () => rooms[current]?.props.anim?.play('hit'));
+        } else if (kind === 'phoenix') {
+          heroes.forEach((x) => x.alive && fx.burst(worldPos(x.obj, 1.2), 0xff9a3a, { count: 16, up: 2.5, gravity: -2, life: 1, size: 0.14 }));
         }
       });
     });

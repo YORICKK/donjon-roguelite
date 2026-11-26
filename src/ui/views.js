@@ -14,9 +14,10 @@ import { esc, fmtMod } from './dom.js';
 const BASE = import.meta.env.BASE_URL;
 export const ROOM_ICONS = { combat: '⚔️', trap: '🪤', chest: '🧰', shrine: '⛩️', npc: '🧙', rest: '🔥', boss: '💀', elite: '💀', shop: '🛒', entrance: '🚪' };
 
-export const portraitUrl = (classId) => `${BASE}portraits/${classId}.png`;
+export const portraitUrl = (classId) => `${BASE}portraits/${CLASSES[classId]?.portrait || classId}.png`;
+const pfilter = (classId) => (CLASSES[classId]?.portraitFilter ? `filter:${CLASSES[classId].portraitFilter};` : '');
 const portrait = (classId, cls = '') =>
-  classId ? `<img class="portrait ${cls}" src="${portraitUrl(classId)}" alt="" style="--cc:${CLASSES[classId].color}" />`
+  classId ? `<img class="portrait ${cls}" src="${portraitUrl(classId)}" alt="" style="--cc:${CLASSES[classId].color};${pfilter(classId)}" />`
     : `<span class="portrait ${cls}" style="display:grid;place-items:center">?</span>`;
 
 function hpClass(hp, max) {
@@ -50,7 +51,7 @@ function accountBlock(app, where) {
     <p class="muted small">${where === 'menu' ? 'Vous jouez en invité : connectez Google pour retrouver vos objets sur tous vos appareils.' : 'Ou entrez un pseudo pour jouer en invité.'}</p>`;
 }
 
-const strip = () => `<div class="heroes-strip">${Object.keys(CLASSES).map((c) => `<img src="${portraitUrl(c)}" alt="" />`).join('')}</div>`;
+const strip = () => `<div class="heroes-strip">${Object.keys(CLASSES).map((c) => `<img src="${portraitUrl(c)}" alt="" style="${pfilter(c)}" />`).join('')}</div>`;
 
 // ---------- Accueil ----------
 export function renderName(app, pendingRoom) {
@@ -377,7 +378,7 @@ function renderVote(app, L) {
       ${choices.map((c) => {
         const pv = previewChoice(g, players, c);
         const voterImgs = Object.entries(votes).filter(([, v]) => v === c.id)
-          .map(([u]) => `<img src="${portraitUrl(players[u]?.classId || 'guerrier')}" alt="${esc(players[u]?.name || '')}" title="${esc(players[u]?.name || '')}" />`).join('');
+          .map(([u]) => `<img src="${portraitUrl(players[u]?.classId || 'guerrier')}" style="${pfilter(players[u]?.classId)}" alt="${esc(players[u]?.name || '')}" title="${esc(players[u]?.name || '')}" />`).join('');
         const pct = pv ? Math.round(pv.chance * 100) : null;
         const tone = pct === null ? '' : pct >= 60 ? 'good' : pct >= 35 ? 'mid' : 'bad';
         let meta;

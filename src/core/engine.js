@@ -34,6 +34,7 @@ export function computeCharacter(classId, equipped = [], boons = [], companion =
     for (const k of Object.keys(stats)) stats[k] += b[k] || 0;
     hp += b.hp || 0;
     dmg += b.dmg || 0;
+    luck += b.luck || 0;
   }
   for (const id of boons) {
     const b = BOONS[id]?.bonus || {};
@@ -56,7 +57,7 @@ function makeRoom(rng, type, level, used = null) {
     shape: { w: rng.int(8, 13), d: rng.int(8, 12), pillars: rng.int(0, 2) * 2, torches: rng.int(2, 4) },
   };
   if (type === 'combat' || type === 'elite') room.enemyId = rng.pick(level.enemies);
-  else if (type === 'boss') room.enemyId = level.boss;
+  else if (type === 'boss') room.enemyId = level.bosses ? rng.pick(level.bosses) : level.boss;
   else if (EVENTS[type]) {
     const pool = EVENTS[type].filter((e) => !e.hidden && (!e.themes || e.themes.includes(level.theme)));
     // Pas deux fois le même événement dans un run (tant qu'il en reste d'inédits)
@@ -426,6 +427,12 @@ function hurt(game, uid, amount, players, lines, source = 'hit') {
     (game._pets ||= []).push({ uid, kind: 'guard' });
   }
   m.hp = Math.max(0, m.hp - amount);
+  if (source === 'hit' && m.pet && ITEMS[m.pet]?.power === 'thorns' && game.enemy?.hp > 1) {
+    const back = Math.min(3, game.enemy.hp - 1);
+    game.enemy.hp -= back;
+    lines.push(`🗿 Le golem de ${players[uid].name} riposte (−${back} PV à l'ennemi).`);
+    (game._pets ||= []).push({ uid, kind: 'thorns' });
+  }
   lines.push(source === 'poison' ? `🤢 ${players[uid].name} souffre du poison (−${amount} PV).` : `💥 ${players[uid].name} perd ${amount} PV.`);
   (source === 'poison' ? (game._poisoned ||= []) : (game._hurt ||= [])).push(uid);
   if (m.hp <= 0) { m.alive = false; m.poison = 0; lines.push(`☠️ ${players[uid].name} est mort. Pour de bon.`); }
@@ -690,12 +697,22 @@ function enemyAct(game, players, rng, lines, { failed, guarded }) {
     hurt(game, t, Math.ceil(dmg() / 2), players, lines);
     if (game.party[t].alive) { game.party[t].poison = 3; lines.push(`🤢 ${players[t].name} est empoisonné.`); }
     acted = 'attack';
+  } else if (intent === 'drain' && failed && !guarded) {
+    const t = randomAlive(game, rng);
+    const before = game.party[t].hp;
+    hurt(game, t, dmg(), players, lines);
+    const gain = Math.ceil((before - game.party[t].hp) / 2);
+    if (gain > 0) {
+      game.enemy.hp = Math.min(game.enemy.maxHp, game.enemy.hp + gain);
+      lines.push(`🦇 ${e.name} draine ${gain} PV.`);
+    }
+    acted = 'attack';
   } else if (intent === 'enrage') {
     game.enemy.rage += 2;
     lines.push(`😡 ${e.name} entre en rage (+2 dégâts).`);
   } else if (intent === 'defend') {
     // l'effet (+4 DD) s'appliquait déjà à l'action du groupe
-  } else if ((intent === 'attack' || intent === 'poison') && guarded) {
+  } else if ((intent === 'attack' || intent === 'poison' || intent === 'drain') && guarded) {
     lines.push(`🛡️ La garde bloque l'attaque de ${e.name}.`);
   }
   return acted;
@@ -847,6 +864,11 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
       game.enemy.hp -= dmg;
       lines.push(`🐺 Le loup de ${players[uid].name} mord ${ENEMIES[game.enemy.id].name} (−${dmg} PV) !`);
       (game._pets ||= []).push({ uid, kind: 'bite' });
+    }
+    for (const uid of petOwners(game, 'phoenix')) {
+      lines.push(`🦅 Le phénix de ${players[uid].name} répand des flammes guérisseuses.`);
+      healAll(game, 2 + Math.floor(level.id / 2), players, lines);
+      (game._pets ||= []).push({ uid, kind: 'phoenix' });
     }
   }
   if (game.enemy && !game.enemy.fled && fight && game.enemy.poison > 0 && game.enemy.hp > 0) {
