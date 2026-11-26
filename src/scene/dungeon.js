@@ -203,7 +203,7 @@ export function createDungeonScene(canvas) {
         pet = {
           obj: pobj, anim: new Animator(pobj), power: petDef.power, sparkle: petDef.look?.sparkle, sparkleT: Math.random(),
           // le dragonnet alterne vol et sol
-          flyer: petDef.model === 'pet_dragon', mode: 'ground', modeT: 3 + Math.random() * 4, curY: 0,
+          flyer: petDef.power === 'breath' || !!petDef.flyer, mode: 'ground', modeT: 3 + Math.random() * 4, curY: 0,
         };
       }
       heroes.push({ ...m, obj, lunge: 0, anim, pet });

@@ -29,7 +29,7 @@ export const ITEMS = {
   talisman_os: { name: "Talisman d'os", icon: '📿', rarity: 'epique', tier: 3, bonus: { int: 1, sag: 1, hp: 3 } },
 
   // ---------- Compagnons : conservés comme des objets, un seul par joueur au début d'un run ----------
-  // power : effet en jeu (voir engine.js) ; model : nœud du fichier companions.glb (look : recoloration, scale : taille).
+  // power : effet en jeu (voir engine.js) ; model : nœud du fichier companions.glb (scale : taille, flyer : vole par moments).
   pet_ecureuil: {
     name: 'Écureuil', icon: '🐿️', rarity: 'commun', tier: 1, companion: true, model: 'pet_ecureuil', power: 'useless',
     desc: 'Totalement inutile. Mais tellement mignon.',
@@ -51,18 +51,17 @@ export const ITEMS = {
     desc: 'Souffle du feu sur chaque ennemi rencontré (2d6 + 2 par niveau).',
   },
   pet_chat: {
-    name: 'Chat noir', icon: '🐈', rarity: 'rare', tier: 2, companion: true, model: 'pet_loup', scale: 0.6, power: 'luck',
-    look: { hue: 0.75, sat: 0.25, light: 0.4, glow: 0x7a3cff }, bonus: { luck: 1 },
+    name: 'Chat noir', icon: '🐈', rarity: 'rare', tier: 2, companion: true, model: 'pet_chat', power: 'luck',
+    bonus: { luck: 1 },
     desc: 'Porte-malheur… pour les autres : +1 chance (relance un « Raté » de plus, +1 aux jets).',
   },
   pet_golem: {
-    name: 'Golem de poche', icon: '🗿', rarity: 'epique', tier: 3, companion: true, model: 'pet_ours', scale: 0.65, power: 'thorns',
-    look: { hue: 0.58, sat: 0.12, light: 0.95, glow: 0x5a8cff }, bonus: { hp: 2 },
+    name: 'Golem de poche', icon: '🗿', rarity: 'epique', tier: 3, companion: true, model: 'pet_golem', power: 'thorns',
+    bonus: { hp: 2 },
     desc: 'Riposte : renvoie 3 dégâts à chaque coup que reçoit son maître, +2 PV.',
   },
   pet_phenix: {
-    name: 'Phénix', icon: '🦅', rarity: 'legendaire', tier: 4, companion: true, model: 'pet_dragon', scale: 0.9, power: 'phoenix',
-    look: { hue: 0.07, sat: 1, light: 1.3, glow: 0xff8a00 },
+    name: 'Phénix', icon: '🦅', rarity: 'legendaire', tier: 4, companion: true, model: 'pet_phenix', power: 'phoenix', flyer: true,
     desc: 'Ses flammes soignent : le groupe récupère 2 PV (+1 tous les 2 niveaux) à chaque tour de combat.',
   },
 };
