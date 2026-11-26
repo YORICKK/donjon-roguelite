@@ -400,6 +400,28 @@ test('mode infini : après le boss, chaque héros copie une tuile pour le reste 
   assert.deepEqual(duo.a.wheel, undefined, 'la roue du profil n’est pas touchée');
 });
 
+test('mode infini : montée de niveau puis Miroir — deux étapes distinctes pour l’hôte (partie bloquée sinon)', async () => {
+  const { ENDLESS_START } = await import('../src/data/levels.js');
+  const { stepKey } = await import('../src/core/engine.js');
+  const { XP_LEVELS } = await import('../src/data/run.js');
+  const solo = { a: { name: 'A', classId: 'guerrier', equipped: [] } };
+  let g = createGame('chain', ENDLESS_START, solo);
+  const boss = g.map.floors[g.map.floors.length - 2][0];
+  g = resolveChoice({ ...g, map: { floors: [[boss]] } }, solo, `go:${boss.id}`, 'chain');
+  g = resolveChoice({ ...g, enemy: { ...g.enemy, hp: 1, poison: 2, poisonDmg: 5 } }, solo, 'roue', 'chain');
+  assert.equal(g.pendingCopy, true);
+  g.xp = XP_LEVELS[g.plevel]; // le boss fait aussi monter de niveau
+  g = advance(g, 'chain');
+  assert.equal(g.offerKind, 'boon');
+  const boonKey = stepKey(g);
+  g = finishLevelUp({ ...g, picks: { a: g.offers.a[0] } }, 'chain');
+  assert.equal(g.phase, 'levelup');
+  assert.equal(g.offerKind, 'copy');
+  assert.notEqual(stepKey(g), boonKey, 'l’hôte doit voir le Miroir comme une nouvelle étape');
+  g = finishLevelUp({ ...g, picks: { a: g.offers.a[0] } }, 'chain');
+  assert.equal(g.phase, 'path');
+});
+
 test('mode auto : choisit toujours un choix valide, descend ou remonte à l’escalier', async () => {
   const { chooseVote, pickBoon } = await import('../src/core/autoplay.js');
   const { ENDLESS_START } = await import('../src/data/levels.js');

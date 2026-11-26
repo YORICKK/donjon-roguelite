@@ -6,7 +6,7 @@ import { animateWheels, settleWheels, spinsDuration, ultTiming } from './ui/whee
 import { LEVELS, getLevel, isEndless, ENDLESS_BASE, ENDLESS_START } from './data/levels.js';
 import { Rng, randomSeed } from './core/rng.js';
 import {
-  createGame, generateDungeon, getChoices, tallyVotes, votersFor, resolveChoice, advance, finishLevelUp, keptLoot,
+  createGame, generateDungeon, getChoices, tallyVotes, votersFor, resolveChoice, advance, finishLevelUp, keptLoot, stepKey,
   VOTE_SECONDS, PICK_SECONDS,
 } from './core/engine.js';
 import { profiles, multiLobbies, soloLobbies, leaderboard, makeCode, emptyProfile, mergeProfiles } from './net/index.js';
@@ -390,7 +390,7 @@ setInterval(async () => {
   const L = app.lobby;
   if (!L || L.hostUid !== app.uid || L.status !== 'playing' || !L.game) return;
   const g = L.game;
-  const key = `${L.seed}|${g.roomIndex}|${g.round}|${g.phase}`;
+  const key = `${L.seed}|${stepKey(g)}`;
   if (resolving === key) return;
   const players = L.players || {};
   if (g.phase === 'levelup') {

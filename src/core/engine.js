@@ -1068,6 +1068,12 @@ export function advance(gameIn, seed = '') {
   return game;
 }
 
+/**
+ * Identifiant d'une étape à résoudre par l'hôte (il ne résout chaque étape qu'une fois).
+ * offerKind : une montée de niveau peut être suivie du Miroir dans la même salle, au même tour, même phase.
+ */
+export const stepKey = (g) => `${g.levelId}|${g.roomIndex}|${g.round}|${g.phase}|${g.offerKind || ''}`;
+
 /** Applique les bonus choisis (ou un bonus au hasard pour qui n'a pas choisi), puis retour à la carte. */
 export function finishLevelUp(gameIn, seed = '') {
   const game = structuredClone(gameIn);
