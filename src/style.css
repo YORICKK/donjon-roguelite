@@ -521,3 +521,6 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 .recap-stat { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border-radius: 8px; background: rgba(0, 0, 0, 0.25); text-align: center; }
 .recap-stat .ico { font-size: 1.2em; }
 @media (max-width: 520px) { .recap-grid { grid-template-columns: repeat(2, 1fr); } }
+
+/* Mode auto */
+.auto-btn.on { background: linear-gradient(180deg, #3fae5a, #1f6e33); color: #fff; border-color: #7fe39a; box-shadow: 0 0 10px rgba(80, 220, 120, 0.45); }

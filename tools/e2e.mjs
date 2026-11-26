@@ -99,6 +99,21 @@ await step('Mode infini : lancement à l’étage 1', async () => {
   await playRooms(inf, 1);
 });
 
+await step('Mode auto : le jeu avance seul (3 salles ou fin du run)', async () => {
+  const auto = await openPage('Robot');
+  await click(auto, '[data-action="solo"]');
+  await setupHero(auto, 'guerrier');
+  await click(auto, '[data-action="start"]');
+  await auto.waitForSelector('[data-action="toggleAuto"]', { timeout: 5000 });
+  await click(auto, '[data-action="toggleAuto"]');
+  await auto.waitForFunction(() => {
+    if (document.querySelector('.over-title')) return true;
+    const k = document.querySelector('.kicker')?.textContent || '';
+    const m = k.match(/Étage (\d+)/);
+    return m && Number(m[1]) >= 3;
+  }, null, { timeout: 90000, polling: 500 });
+});
+
 await step('Classement du mode infini : écran et retour au menu', async () => {
   const lb = await openPage('Classement');
   await click(lb, '[data-action="leaderboard"]');

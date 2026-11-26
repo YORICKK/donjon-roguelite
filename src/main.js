@@ -15,6 +15,7 @@ import { toast } from './ui/dom.js';
 import { renderName, renderMenu, renderInventory, renderLeaderboard, renderLobby, renderGame, currentWheel } from './ui/views.js';
 import { CLASSES } from './data/classes.js';
 import { actionFor } from './scene/anim.js';
+import { chooseVote, pickBoon } from './core/autoplay.js';
 
 const RESULT_AUTO_MS = 9000;
 const ui = document.getElementById('ui');
@@ -36,6 +37,7 @@ if (new URLSearchParams(location.search).has('fps')) {
 const app = {
   screen: 'name', // name | menu | inventory | lobby
   name: localStorage.getItem('donjon:name') || '',
+  auto: localStorage.getItem('donjon:auto') === '1', // mode auto : le jeu vote pour vous
   uid: null,
   profile: null,
   api: null, // backend du salon courant
@@ -220,6 +222,34 @@ function tickCountdown() {
   bar.parentElement.classList.toggle('urgent', left < 8);
 }
 setInterval(tickCountdown, 250);
+
+// ---------- Mode auto ----------
+// Vote à votre place le choix le plus probable / le plus rentable (même politique que le bot du simulateur),
+// et choisit vos bonus de niveau et vos copies de tuile. Un court délai laisse voir la situation avant le vote.
+const AUTO_DELAY = 1300;
+const autoSeen = new Map();
+function autoTick() {
+  const L = app.lobby;
+  if (!app.auto || app.screen !== 'lobby' || !L || L.status !== 'playing' || !L.game || app.spinning) return;
+  const g = L.game;
+  const players = L.players || {};
+  const me = players[app.uid];
+  if (!me?.classId || !g.party?.[app.uid]) return;
+  const key = `${L.seed}|${g.levelId}|${g.roomIndex}|${g.round}|${g.phase}|${g.offerKind || ''}`;
+  if (!autoSeen.has(key)) { autoSeen.clear(); autoSeen.set(key, Date.now()); return; }
+  if (Date.now() - autoSeen.get(key) < AUTO_DELAY) return;
+  if (g.phase === 'vote' || g.phase === 'path') {
+    if (g.votes?.[app.uid] || !votersFor(g, players).includes(app.uid)) return;
+    const choices = getChoices(g, players);
+    if (!choices.length) return;
+    upd({ [`game/votes/${app.uid}`]: chooseVote(g, players, choices) });
+  } else if (g.phase === 'levelup') {
+    const offer = g.offers?.[app.uid];
+    if (!offer || g.picks?.[app.uid]) return;
+    upd({ [`game/picks/${app.uid}`]: pickBoon(me.classId, offer) });
+  }
+}
+setInterval(autoTick, 300);
 
 // Sur mobile, le panneau du bas cache une partie de la scène : on décale la caméra vers le haut.
 function updateInset() {
@@ -576,6 +606,12 @@ const actions = {
     const seed = L.seed || randomSeed();
     const players = Object.fromEntries(Object.entries(L.players || {}).filter(([, p]) => p.online !== false && p.classId));
     upd({ status: 'playing', seed, game: createGame(seed, L.levelId || 1, players) });
+  },
+  toggleAuto() {
+    app.auto = !app.auto;
+    try { localStorage.setItem('donjon:auto', app.auto ? '1' : '0'); } catch { /* stockage indisponible */ }
+    toast(app.auto ? '🤖 Mode auto : le jeu choisit pour vous les options les plus sûres.' : 'Mode auto désactivé : à vous de jouer.');
+    render();
   },
   pick(el) {
     buzz(15);

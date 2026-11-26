@@ -148,6 +148,7 @@ export function renderGame(app, L) {
           <div class="xp" title="Expérience : ${g.xp || 0}${nextXp ? ` / ${nextXp}` : ''}"><div style="width:${xpPct}%"></div></div>
           <div class="loot">🎒 ${(g.loot || []).map((id) => ITEMS[id].icon).join(' ') || 'aucun butin'}</div>
         </div>
+        <button class="menu-btn auto-btn ${app.auto ? 'on' : ''}" data-action="toggleAuto" aria-pressed="${app.auto}" title="Le jeu vote pour vous le choix le plus probable">🤖 Auto${app.auto ? ' ✓' : ''}</button>
         <button class="menu-btn" data-action="abandon" aria-label="${isHost ? 'Abandonner le run' : 'Quitter'}">${isHost ? '🏳️ Abandon' : '🚪 Quitter'}</button>
       </div>
     </div>

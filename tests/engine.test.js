@@ -399,3 +399,32 @@ test('mode infini : après le boss, chaque héros copie une tuile pour le reste 
   assert.equal(done.pendingCopy, false);
   assert.deepEqual(duo.a.wheel, undefined, 'la roue du profil n’est pas touchée');
 });
+
+test('mode auto : choisit toujours un choix valide, descend ou remonte à l’escalier', async () => {
+  const { chooseVote, pickBoon } = await import('../src/core/autoplay.js');
+  const { ENDLESS_START } = await import('../src/data/levels.js');
+  // un run entier joué par le mode auto : chaque vote doit être un choix proposé
+  let g = createGame('auto', 1, players);
+  for (let i = 0; i < 400 && g.phase !== 'over'; i++) {
+    if (g.phase === 'result') { g = advance(g, 'auto'); continue; }
+    if (g.phase === 'levelup') {
+      const picks = {};
+      for (const [u, o] of Object.entries(g.offers)) { picks[u] = pickBoon(players[u].classId, o); assert.ok(Object.values(o).includes(picks[u])); }
+      g = finishLevelUp({ ...g, picks }, 'auto');
+      continue;
+    }
+    const choices = getChoices(g, players);
+    const id = chooseVote(g, players, choices);
+    assert.ok(choices.some((c) => c.id === id && !c.disabled), `choix valide (${id})`);
+    g = resolveChoice(g, players, id, 'auto');
+  }
+  assert.equal(g.phase, 'over');
+  // escalier : descend en bonne santé, remonte à bout de forces
+  const map = generateMap('st', ENDLESS_START);
+  const boss = map.floors[map.floors.length - 2][0], st = map.floors[map.floors.length - 1][0];
+  let s = createGame('st', ENDLESS_START, players);
+  s = resolveChoice({ ...s, map, nodeId: boss.id }, players, `go:${st.id}`, 'st');
+  assert.equal(chooseVote(s, players, getChoices(s, players)), 'descend');
+  for (const m of Object.values(s.party)) m.hp = 1;
+  assert.equal(chooseVote(s, players, getChoices(s, players)), 'retreat');
+});
