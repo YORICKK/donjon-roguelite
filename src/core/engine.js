@@ -11,7 +11,7 @@ import { getLevel, MAP_EXTRA_WEIGHTS } from '../data/levels.js';
 import { ENEMIES, EVENTS, COMBAT_ACTIONS } from '../data/events.js';
 import { heroBonus } from '../data/heroes.js';
 import { TILES, SPINS_PER_ATTACK, MAX_SPINS, ULT_WHEELS, sanitizeWheel, tileValue } from '../data/wheel.js';
-import { NODE_TYPES, ELITE, PACK, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
+import { NODE_TYPES, ELITE, PACK, DIFFICULTY, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
 
 export const VOTE_SECONDS = 30;
 export const PICK_SECONDS = 25;
@@ -170,7 +170,7 @@ function enemyStats(game) {
   return {
     e,
     dc: e.dc + level.dcBonus + (elite ? ELITE.dc : 0) + (game.enemy.intent === 'defend' ? 4 : 0),
-    dmgMax: e.dmg * level.enemyScale * (elite ? ELITE.dmg : 1) * (game.enemy.minion ? PACK.dmg : 1),
+    dmgMax: e.dmg * level.enemyScale * DIFFICULTY.dmg * (elite ? ELITE.dmg : 1) * (game.enemy.minion ? PACK.dmg : 1),
   };
 }
 
@@ -196,7 +196,7 @@ function enterRoom(game, seed) {
     const e = ENEMIES[room.enemyId];
     const n = Object.keys(game.party).length;
     const elite = room.type === 'elite';
-    const hp = Math.round(e.hp * level.enemyScale * (1 + 0.5 * (n - 1)) * (elite ? ELITE.hp : 1));
+    const hp = Math.round(e.hp * level.enemyScale * DIFFICULTY.hp * (1 + 0.5 * (n - 1)) * (elite ? ELITE.hp : 1));
     game.enemy = { id: room.enemyId, hp, maxHp: hp, elite, rage: 0, phase: 1, intent: 'attack', slot: -1 };
     rollIntent(game, rng);
     // Sbires : un par joueur en plus du premier, parfois un en solo dans les niveaux avancés
@@ -208,7 +208,7 @@ function enterRoom(game, seed) {
     game.pack = [];
     for (let i = 0; i < count; i++) {
       const id = rng.pick(level.enemies);
-      const mhp = Math.max(4, Math.round(ENEMIES[id].hp * level.enemyScale * PACK.hp));
+      const mhp = Math.max(4, Math.round(ENEMIES[id].hp * level.enemyScale * DIFFICULTY.hp * PACK.hp));
       game.enemy = { id, hp: mhp, maxHp: mhp, rage: 0, phase: 1, intent: 'attack', minion: true, slot: i };
       rollIntent(game, rng);
       game.pack.push(game.enemy);
@@ -476,8 +476,8 @@ function healAll(game, amount, players, lines, cure = false) {
   (game._healed = true);
 }
 
-/** Butin : une tuile de roue (55 %) ou un objet d'équipement. */
-export const TILE_LOOT_CHANCE = 0.55;
+/** Butin : une tuile de roue (40 %) ou un objet d'équipement. */
+export const TILE_LOOT_CHANCE = 0.4;
 export function rollLoot(rng, levelId, boost = 0, tile = rng.chance(TILE_LOOT_CHANCE)) {
   const level = getLevel(levelId);
   let rarity = rng.weighted(level.lootTable);

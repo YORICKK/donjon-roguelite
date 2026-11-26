@@ -26,6 +26,9 @@ export const ELITE = { hp: 1.6, dmg: 1.25, dc: 1, gold: 2, xp: 2, lootBoost: 1 }
  * soloChance : chance d'un sbire en solo, par rang de niveau (plafonnée à soloMax).
  * Un sbire a hp × enemyScale × hp, frappe à dmg × les dégâts, rapporte gold/xp × ses gains.
  */
+// Difficulté globale : multiplie PV et dégâts de tous les ennemis (gardiens, élites et sbires compris).
+export const DIFFICULTY = { hp: 1.12, dmg: 1.1 };
+
 export const PACK = { perExtraPlayer: 1, soloChance: 0.06, soloMax: 0.4, hp: 0.45, dmg: 0.4, gold: 0.4, xp: 0.5, maxSize: 3 };
 
 /** Consommables du groupe (sac commun), utilisables à la place d'une action. */
