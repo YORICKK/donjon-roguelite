@@ -22,6 +22,16 @@ Tests des règles (simulation de centaines de runs) :
 npm test
 ```
 
+Test de bout en bout dans un vrai navigateur (Edge ou Chrome déjà installé, via `playwright-core`) : compile le jeu
+sans Firebase (`.env.e2e`), puis joue connexion → campagne solo → mode infini → classement → partie à 2 onglets,
+et échoue au moindre écran bloqué ou erreur console. **À lancer avant chaque déploiement** :
+
+```powershell
+npm run check
+```
+
+(`npm run check` = `npm test` + `npm run e2e`.)
+
 ## Règles du prototype
 
 **♾️ Mode infini** (mode principal, bouton en tête du menu, ou « Mode infini » dans la liste des donjons d'un salon) :
@@ -29,7 +39,9 @@ des étages sans fin de 4 salles + boss. L'étage N reprend le biome, les ennemi
 avec une difficulté qui monte à chaque étage (ennemis ×(1 + 0,4 × (N−1)), DD +1,4 par étage, plafonné à +12) : l'étage 6
 vaut le niveau 6 de la campagne, puis ça continue. Après chaque boss, un escalier : **descendre** (le groupe récupère
 30 % de ses PV, les morts reviennent) ou **remonter** avec tout le butin. En cas de mort, le butin des étages terminés
-est assuré, plus l'objet le plus rare de l'étage en cours. Le record d'étage est gardé dans le profil (`bestDepth`).
+est assuré, plus l'objet le plus rare de l'étage en cours. **Miroir des abîmes** : après chaque boss, chaque héros
+debout copie une tuile de sa roue (parmi ses 4 plus fortes) ; la copie remplace un « Raté », sinon la tuile la plus
+faible, **jusqu'à la fin du run seulement** (la roue du profil ne change pas ; `copyOffers` / `copyTile` dans le moteur). Le record d'étage est gardé dans le profil (`bestDepth`).
 Côté code : `endlessLevel()` dans `src/data/levels.js` (étages codés `levelId = 100 + N`), salle `stairs` et
 `takeStairs()` dans `src/core/engine.js`.
 
@@ -76,7 +88,16 @@ src/
     firebase.js  auth anonyme, Realtime Database (salons), Firestore (profils)
     local.js     même interface en localStorage (mode hors ligne / tests multi-onglets)
   scene/dungeon.js  scène three.js : salles, couloirs, props, caméra qui avance
-  main.js      écrans, salon, boucle de l'hôte, sauvegarde du profil
+  ui/          gabarits HTML, un fichier par écran (views.js les réexporte)
+    common.js    portraits, barres de PV, objets, tuiles, compte
+    menu.js      pseudo, menu, classement du mode infini, inventaire
+    lobby.js     salon : classe, éditeur de roue, équipement
+    game.js      partie : carte, salle, votes, résultat, fin de run, escalier
+    wheel.js     roue de combat (SVG + animation)
+  main.js      actions, salon, boucle de l'hôte, sauvegarde du profil
+tools/
+  simulate.mjs équilibrage (bot qui joue des centaines de runs)
+  e2e.mjs      test de bout en bout dans le navigateur
 ```
 
 **Modèle réseau** : l'état du salon est un seul objet dans `lobbies/{CODE}` (Realtime Database).
@@ -84,7 +105,16 @@ Chaque joueur écrit ses propres champs (classe, équipement, prêt, vote). **L'
 il compte les votes, résout le choix avec le moteur et écrit le nouvel état `game`. Les jets sont
 déterministes (graine du run + salle + tour), donc rejouables et testables.
 
-**Profil joueur** : Firestore `players/{uid}` = `{ name, inventory: {itemId: quantité}, unlockedLevel, runs, wins }`.
+**Profil joueur** : Firestore `players/{uid}` = `{ name, inventory: {itemId: quantité}, unlockedLevel, runs, wins, bestDepth }`.
+
+**Classement du mode infini** : Firestore `leaderboard/{uid}` = `{ name, depth, classId, party, at }`, lisible par tous
+les joueurs connectés ; les règles (`firestore.rules`) n'autorisent chacun qu'à améliorer sa propre ligne.
+
+**Sbires** (`PACK` dans `src/data/run.js`) : chaque salle de combat (élite et boss compris) ajoute un sbire par joueur
+au-delà du premier (3 au plus), et parfois un en solo dans les niveaux avancés. Les sbires frappent chacun à leur tour,
+les dégâts en trop sur une cible tuée passent à la suivante, un sbire prend la relève si le chef tombe, et les sbires
+d'un boss s'enfuient à sa mort. Effet mesuré (équipement de milieu de campagne) : à 4 joueurs, niveau 5 de 92 % à 58 %
+de victoires, niveau 6 de 84 % à 28 %.
 
 **Ajouter un niveau plus difficile** : ajoutez une entrée dans `LEVELS` (`dcBonus`, `enemyScale`, `rooms`,
 `lootTable`, `enemies`, `boss`) et, si besoin, des ennemis dans `ENEMIES` et des objets de `tier` supérieur

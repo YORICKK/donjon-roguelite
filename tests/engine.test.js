@@ -339,3 +339,63 @@ test('mode infini : escalier après le boss, descente, butin des étages assuré
   assert.equal(out.outcome, 'victory');
   assert.equal(out.phase, 'over');
 });
+
+test('sbires : un par joueur en plus, relève avec dégâts en trop, fuite à la mort du boss', () => {
+  const trio = {
+    a: { name: 'A', classId: 'guerrier', equipped: [] },
+    b: { name: 'B', classId: 'mage', equipped: [] },
+    c: { name: 'C', classId: 'clerc', equipped: [] },
+  };
+  const enter = (type) => {
+    const g = createGame('pack', 2, trio);
+    const node = g.map.floors.flat().find((n) => n.room.type === type);
+    return resolveChoice({ ...g, map: { floors: [[node]] } }, trio, `go:${node.id}`, 'pack');
+  };
+  let g = enter('combat');
+  assert.ok(g.pack.length >= 2, `au moins 2 sbires pour 3 joueurs (${g.pack.length})`);
+  assert.deepEqual(g.rooms[g.roomIndex].pack, g.pack.map((m) => m.id), 'la scène connaît les sbires');
+  // le poison achève le chef : le 1er sbire prend la relève et encaisse le surplus
+  const first = g.pack[0];
+  const t = resolveChoice({ ...g, enemy: { ...g.enemy, hp: 1, poison: 2, poisonDmg: 1 } }, trio, 'roue', 'pack');
+  assert.equal(t.lastResult.roomDone, false, 'la salle continue tant que des sbires sont debout');
+  assert.ok(t.enemy.slot >= 0, 'un sbire est devant');
+  assert.ok(t.pack.length < g.pack.length);
+  if (t.enemy.slot === 0) assert.ok(t.enemy.hp < first.hp || t.lastResult.lines.some((l) => l.includes('relève')));
+  // boss vaincu : ses sbires s'enfuient, la salle est finie
+  const b = enter('boss');
+  assert.ok(b.pack.length >= 2);
+  const end = resolveChoice({ ...b, enemy: { ...b.enemy, hp: 1, poison: 2, poisonDmg: 5 } }, trio, 'roue', 'pack');
+  assert.equal(end.lastResult.roomDone, true);
+  assert.equal(end.pack.length, 0);
+  assert.ok(end.lastResult.lines.some((l) => l.includes('enfuient')));
+});
+
+test('mode infini : après le boss, chaque héros copie une tuile pour le reste du run', async () => {
+  const { ENDLESS_START } = await import('../src/data/levels.js');
+  const { copyOffers } = await import('../src/core/engine.js');
+  const duo = { a: { name: 'A', classId: 'guerrier', equipped: [] }, b: { name: 'B', classId: 'mage', equipped: [] } };
+  let g = createGame('copy', ENDLESS_START, duo);
+  const boss = g.map.floors[g.map.floors.length - 2][0];
+  g = resolveChoice({ ...g, map: { floors: [[boss]] } }, duo, `go:${boss.id}`, 'copy');
+  // le boss (et ses sbires) tombent sous le poison pendant le tour
+  g = resolveChoice({ ...g, enemy: { ...g.enemy, hp: 1, poison: 2, poisonDmg: 5 } }, duo, 'roue', 'copy');
+  assert.equal(g.lastResult.roomDone, true);
+  assert.equal(g.pendingCopy, true);
+  g.xp = 0; g.plevel = 1; // pas de montée de niveau ici : on va droit à la copie
+  g = advance(g, 'copy');
+  assert.equal(g.phase, 'levelup');
+  assert.equal(g.offerKind, 'copy');
+  const offer = g.offers.a;
+  assert.deepEqual(offer, copyOffers(g.party.a));
+  assert.ok(!offer.includes('t_rate'), 'on ne copie pas un « Raté »');
+  const before = [...g.party.a.wheel];
+  const pick = offer[0];
+  const done = finishLevelUp({ ...g, picks: { a: pick } }, 'copy');
+  const after = done.party.a.wheel;
+  assert.equal(after.filter((x) => x === pick).length, before.filter((x) => x === pick).length + 1, 'une copie de plus');
+  assert.equal(after.filter((x) => x === 't_rate').length, before.filter((x) => x === 't_rate').length - 1, 'un « Raté » remplacé');
+  assert.equal(done.party.b.wheel.length, 12, 'B a reçu une copie au hasard');
+  assert.equal(done.phase, 'path');
+  assert.equal(done.pendingCopy, false);
+  assert.deepEqual(duo.a.wheel, undefined, 'la roue du profil n’est pas touchée');
+});

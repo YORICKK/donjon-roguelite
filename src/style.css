@@ -499,3 +499,25 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 /* Mode infini : bouton principal du menu */
 .endless-btn { line-height: 1.25; padding-top: 0.6em; padding-bottom: 0.6em; }
 .endless-btn .small { display: inline-block; font-weight: 400; opacity: 0.85; }
+
+/* Sbires à côté de l'ennemi principal */
+.pack-line { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0 2px; }
+.pack-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 0.82em; padding: 3px 8px; border-radius: 999px; background: rgba(120, 20, 20, 0.35); border: 1px solid rgba(255, 120, 100, 0.35); }
+.hp.mini { display: inline-block; width: 42px; height: 5px; border-radius: 3px; background: rgba(0, 0, 0, 0.5); overflow: hidden; }
+.hp.mini span { display: block; height: 100%; background: #e0473a; }
+
+/* Classement du mode infini */
+.board { list-style: none; padding: 0; margin: 10px 0; display: flex; flex-direction: column; gap: 6px; }
+.board li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 10px; background: rgba(0, 0, 0, 0.25); }
+.board li.me { outline: 1px solid var(--gold, #e3b25a); background: rgba(227, 178, 90, 0.12); }
+.board .rank { width: 2em; text-align: center; font-weight: 700; }
+.board .depth { white-space: nowrap; }
+.board .portrait, .board img { width: 34px; height: 34px; }
+
+/* Mode infini : bilan d'étage devant l'escalier */
+.floor-recap { margin: 8px 0 10px; padding: 10px 12px; border-radius: 12px; background: linear-gradient(180deg, rgba(40, 140, 170, 0.18), rgba(0, 0, 0, 0.2)); border: 1px solid rgba(80, 210, 255, 0.35); }
+.floor-recap h3 { margin: 0 0 8px; }
+.recap-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; }
+.recap-stat { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; border-radius: 8px; background: rgba(0, 0, 0, 0.25); text-align: center; }
+.recap-stat .ico { font-size: 1.2em; }
+@media (max-width: 520px) { .recap-grid { grid-template-columns: repeat(2, 1fr); } }

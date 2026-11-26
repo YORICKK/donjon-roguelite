@@ -1,13 +1,14 @@
 // Choix du backend : Firebase si configuré (.env.local), sinon tout en local.
 // Le mode solo utilise toujours le salon local (pas besoin de réseau) mais garde
 // le profil (inventaire) dans Firebase quand il est disponible.
-import { isFirebaseConfigured, firebaseLobbies, firebaseProfiles } from './firebase.js';
-import { localLobbies, localProfiles } from './local.js';
+import { isFirebaseConfigured, firebaseLobbies, firebaseProfiles, firebaseLeaderboard } from './firebase.js';
+import { localLobbies, localProfiles, localLeaderboard } from './local.js';
 
 export const online = isFirebaseConfigured;
 export const profiles = online ? firebaseProfiles : localProfiles;
 export const multiLobbies = online ? firebaseLobbies : localLobbies;
 export const soloLobbies = localLobbies;
+export const leaderboard = online ? firebaseLeaderboard : localLeaderboard;
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export function makeCode(len = 5) {

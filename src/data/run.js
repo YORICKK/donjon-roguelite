@@ -20,6 +20,14 @@ export const NODE_TYPES = {
 /** Modificateurs des ennemis d'élite. */
 export const ELITE = { hp: 1.6, dmg: 1.25, dc: 1, gold: 2, xp: 2, lootBoost: 1 };
 
+/**
+ * Sbires : ennemis plus faibles qui accompagnent le chef d'une salle de combat (élite et boss compris).
+ * perExtraPlayer : sbires par joueur au-delà du premier (les parties à plusieurs étaient trop faciles).
+ * soloChance : chance d'un sbire en solo, par rang de niveau (plafonnée à soloMax).
+ * Un sbire a hp × enemyScale × hp, frappe à dmg × les dégâts, rapporte gold/xp × ses gains.
+ */
+export const PACK = { perExtraPlayer: 1, soloChance: 0.06, soloMax: 0.4, hp: 0.45, dmg: 0.4, gold: 0.4, xp: 0.5, maxSize: 3 };
+
 /** Consommables du groupe (sac commun), utilisables à la place d'une action. */
 export const CONSUMABLES = {
   potion_soin: { name: 'Potion de soin', icon: '🧪', price: 15, desc: 'Soigne tout le groupe de 8 PV et guérit le poison.' },

@@ -48,6 +48,16 @@ export const localLobbies = {
   },
 };
 
+/** Classement local (ce navigateur seulement). */
+const LB_KEY = 'donjon:leaderboard';
+export const localLeaderboard = {
+  async submit(uid, entry) { const all = read(LB_KEY) || {}; all[uid] = { ...entry, at: Date.now() }; write(LB_KEY, all); },
+  async top(n = 20) {
+    return Object.entries(read(LB_KEY) || {}).map(([uid, e]) => ({ uid, ...e }))
+      .sort((a, b) => b.depth - a.depth || a.at - b.at).slice(0, n);
+  },
+};
+
 export const localProfiles = {
   mode: 'local',
   googleAvailable: false,

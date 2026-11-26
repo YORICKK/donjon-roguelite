@@ -6,7 +6,7 @@ import {
   signInWithRedirect, linkWithRedirect, getRedirectResult, signOut,
 } from 'firebase/auth';
 import { getDatabase, ref, onValue, update, get, set, onDisconnect, serverTimestamp } from 'firebase/database';
-import { getFirestore, doc, getDoc, setDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, setDoc, collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 
 const env = import.meta.env;
 export const firebaseConfig = {
@@ -71,6 +71,19 @@ export const firebaseLobbies = {
     onDisconnect(onlineRef).set(false);
     set(onlineRef, true);
     return () => onDisconnect(onlineRef).cancel();
+  },
+};
+
+/** Classement du mode infini (Firestore, une ligne par joueur : son meilleur étage). */
+export const firebaseLeaderboard = {
+  async submit(uid, entry) {
+    ensure();
+    await setDoc(doc(fs, 'leaderboard', uid), { ...entry, at: Date.now() });
+  },
+  async top(n = 20) {
+    ensure();
+    const snap = await getDocs(query(collection(fs, 'leaderboard'), orderBy('depth', 'desc'), limit(n)));
+    return snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
   },
 };
 

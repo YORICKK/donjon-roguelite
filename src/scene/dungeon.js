@@ -267,8 +267,10 @@ export function createDungeonScene(canvas) {
   const timers = new Set();
   const later = (ms, fn) => { const id = setTimeout(() => { timers.delete(id); fn(); }, ms); timers.add(id); };
   const worldPos = (obj, y = 1.2) => obj.getWorldPosition(new THREE.Vector3()).setY(y);
-  const enemyObj = () => rooms[current]?.props.enemy || null;
-  const enemyAnim = () => rooms[current]?.props.anim || null;
+  // Cible actuelle : le chef, ou le sbire qui a pris la relève
+  const targetMinion = () => { const p = rooms[current]?.props; return p && p.targetSlot >= 0 ? p.minions?.[p.targetSlot] : null; };
+  const enemyObj = () => targetMinion()?.obj || rooms[current]?.props.enemy || null;
+  const enemyAnim = () => (targetMinion() ? targetMinion().anim : rooms[current]?.props.anim || null);
   // Moment de l'impact dans chaque animation d'action (secondes)
   const IMPACT = { attack: 0.55, stab: 0.25, cast: 0.8, pray: 0.55 };
   const SKILL_COLORS = { boule_de_feu: 0xff6a1a, soin_de_groupe: 0x9dffb0 };
@@ -309,13 +311,15 @@ export function createDungeonScene(canvas) {
       later(t, () => {
         fx.burst(worldPos(enemy, 1.1), r.skillId === 'boule_de_feu' ? 0xff7a2a : 0xffe3a0, { count: 30, speed: 3.5 });
         shakeHit(0.2);
+        if (r.packDead) setRoomState({ packDead: r.packDead });
         if (r.enemyDied) {
-          if (eAnim?.rigged) eAnim.die();
+          if (eAnim?.rigged && !targetMinion()) eAnim.die();
           setRoomState({ enemyHpFrac: 0, enemyDead: true });
         } else {
           eAnim?.play('hit');
           setRoomState({ enemyHpFrac: r.enemyHpFrac });
         }
+        if (r.targetSlot !== undefined) setRoomState({ targetSlot: r.targetSlot });
       });
     }
     // Contre-attaque / piège : les héros touchés encaissent
@@ -720,9 +724,13 @@ export function createDungeonScene(canvas) {
     updateLights();
   }
 
-  function setRoomState({ enemyHpFrac, enemyDead, chestOpen } = {}) {
+  function setRoomState({ enemyHpFrac, enemyDead, chestOpen, packDead, targetSlot } = {}) {
     const p = rooms[current]?.props;
     if (!p) return;
+    if (packDead) (p.minions || []).forEach((m, i) => {
+      if (packDead[i] && !m.dead) { m.dead = true; m.anim?.die(); }
+    });
+    if (targetSlot !== undefined) p.targetSlot = targetSlot;
     if (p.enemy) {
       if (enemyDead !== undefined) {
         if (enemyDead && !p.enemyDead) p.anim?.die();
@@ -889,6 +897,22 @@ function buildProps(def, mat, kit) {
     props.baseScale = enemy.scale.x;
     props.hpFrac = 1;
     props.ghost = e.shape === 'ghost';
+    // Sbires autour du chef (plus petits), dans l'ordre de room.pack
+    const SPOTS = [[-2.3, -3.1], [2.3, -3.1], [-4.0, -3.9]];
+    props.minions = (def.pack || []).map((id, i) => {
+      const me = ENEMIES[id];
+      const mm = kit?.pieces[me.model || `enemy_${id}`];
+      const obj = mm ? cloneModel(mm) : buildEnemy(me, mat);
+      if (mm && me.look) applyShinyLook(obj, me.look, `enemy_${id}`);
+      const [x, z] = SPOTS[i % SPOTS.length];
+      obj.position.set(x, 0, z);
+      obj.rotation.y = -x * 0.12;
+      obj.scale.setScalar((mm ? me.scale || 1 : 1) * 0.82);
+      obj.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+      group.add(obj);
+      const anim = mm ? new Animator(obj) : null;
+      return { obj, anim: anim?.rigged ? anim : null, base: obj.scale.x, dead: false, ghost: me.shape === 'ghost' };
+    });
   }
   if (def.type === 'chest') {
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.8, 0.9), mat(0x7a4a22));
@@ -973,6 +997,46 @@ function buildProps(def, mat, kit) {
     group.add(portal);
     props.portal = portal;
   }
+  if (def.type === 'stairs') {
+    // Mode infini : un puits de pierre où un escalier en colimaçon s'enfonce vers l'étage suivant
+    const stone = mat(0x6e6a62);
+    const dark = mat(0x4a463f);
+    const z0 = -2.2;
+    const R = 1.9;
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(R + 0.35, R + 0.45, 0.55, 16, 1, true), stone);
+    rim.position.set(0, 0.27, z0);
+    rim.material.side = THREE.DoubleSide;
+    const lip = new THREE.Mesh(new THREE.TorusGeometry(R + 0.38, 0.14, 5, 16), stone);
+    lip.rotation.x = Math.PI / 2;
+    lip.position.set(0, 0.56, z0);
+    const pit = new THREE.Mesh(new THREE.CircleGeometry(R + 0.35, 20), new THREE.MeshBasicMaterial({ color: 0x020304 }));
+    pit.rotation.x = -Math.PI / 2;
+    pit.position.set(0, 0.03, z0);
+    group.add(rim, lip, pit);
+    // marches : un quart de tour qui descend du bord vers le fond du puits
+    const STEPS = 9;
+    for (let k = 0; k < STEPS; k++) {
+      const a = Math.PI * 0.95 + (k / STEPS) * Math.PI * 1.25;
+      const y = 0.5 - (k / STEPS) * 0.46;
+      const step = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.09, 0.42), k % 2 ? stone : dark);
+      step.position.set(Math.cos(a) * (R - 0.55), y, z0 + Math.sin(a) * (R - 0.55));
+      step.rotation.y = -a;
+      step.receiveShadow = true;
+      group.add(step);
+    }
+    const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, 0.6, 7), stone);
+    pillar.position.set(0, 0.3, z0);
+    group.add(pillar);
+    // lueur froide qui monte des profondeurs
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(R * 0.7, 20), new THREE.MeshBasicMaterial({ color: 0x3ad6ff, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glow.rotation.x = -Math.PI / 2;
+    glow.position.set(0, 0.05, z0);
+    const light = new FakeLight(0x40d8ff, 9, 6);
+    light.position.set(0, 0.4, z0);
+    group.add(glow, light);
+    props.stairsGlow = glow;
+    props.stairsLight = light;
+  }
   return props;
 }
 
@@ -1032,7 +1096,17 @@ function animateProps(p, t, dt) {
     // Ennemi articulé : l'animation gère attaque, coups reçus et mort ; on garde le flottement des spectres.
     p.anim.update(dt);
     if (p.ghost && !p.enemyDead) p.enemy.position.y = 0.25 + Math.sin(t * 2) * 0.15;
-  } else if (p.enemy) {
+  }
+  for (const m of p.minions || []) {
+    // un sbire vaincu tombe, puis s'efface (la salle reste lisible)
+    if (m.dead) m.deadT = (m.deadT || 0) + dt;
+    const gone = m.dead && (!m.anim || m.deadT > 1.3);
+    m.obj.scale.setScalar(THREE.MathUtils.lerp(m.obj.scale.x, gone ? 0.001 : m.base, dt * 4));
+    m.obj.visible = m.obj.scale.x > 0.01;
+    if (m.anim) { m.anim.update(dt); if (m.ghost && !m.dead) m.obj.position.y = 0.25 + Math.sin(t * 2 + 1) * 0.15; continue; }
+    m.obj.position.y = m.ghost ? 0.3 + Math.sin(t * 2 + 1) * 0.2 : Math.abs(Math.sin(t * 3 + 1)) * 0.05;
+  }
+  if (p.anim) { /* déjà animé */ } else if (p.enemy) {
     const target = p.enemyDead ? 0.001 : p.baseScale;
     const s = THREE.MathUtils.lerp(p.enemy.scale.x, target, dt * 4);
     p.enemy.scale.setScalar(s);
@@ -1049,5 +1123,9 @@ function animateProps(p, t, dt) {
   if (p.npcAnim) p.npcAnim.update(dt);
   if (p.fire) { p.fire.scale.y = 1 + Math.sin(t * 13) * 0.15; p.fireLight.intensity = 7 + Math.sin(t * 17) * 1.5; }
   if (p.portal) p.portal.rotation.z += dt * 0.6;
+  if (p.stairsGlow) {
+    p.stairsGlow.material.opacity = 0.2 + Math.sin(t * 1.6) * 0.08;
+    p.stairsLight.intensity = 8 + Math.sin(t * 1.6) * 2;
+  }
   if (p.spikes) p.spikes.forEach((s, i) => { s.position.y = 0.05 + Math.max(0, Math.sin(t * 2 + i)) * 0.15; });
 }

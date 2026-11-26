@@ -9,10 +9,10 @@ import {
   createGame, generateDungeon, getChoices, tallyVotes, votersFor, resolveChoice, advance, finishLevelUp, keptLoot,
   VOTE_SECONDS, PICK_SECONDS,
 } from './core/engine.js';
-import { profiles, multiLobbies, soloLobbies, makeCode, emptyProfile, mergeProfiles } from './net/index.js';
+import { profiles, multiLobbies, soloLobbies, leaderboard, makeCode, emptyProfile, mergeProfiles } from './net/index.js';
 import { createDungeonScene } from './scene/dungeon.js';
 import { toast } from './ui/dom.js';
-import { renderName, renderMenu, renderInventory, renderLobby, renderGame, currentWheel } from './ui/views.js';
+import { renderName, renderMenu, renderInventory, renderLeaderboard, renderLobby, renderGame, currentWheel } from './ui/views.js';
 import { CLASSES } from './data/classes.js';
 import { actionFor } from './scene/anim.js';
 
@@ -65,6 +65,7 @@ function render() {
   if (app.screen === 'name') html = renderName(app, pendingRoom);
   else if (app.screen === 'menu') html = renderMenu(app);
   else if (app.screen === 'inventory') html = renderInventory(app);
+  else if (app.screen === 'leaderboard') html = renderLeaderboard(app);
   else if (!L) html = '<div class="screen"><div class="panel">Connexion au salon…</div></div>';
   else if (L.status === 'playing' && L.game) html = renderGame(app, L);
   else html = renderLobby(app, L);
@@ -165,7 +166,24 @@ function afterRender() {
 // Vibration (mobile) : seulement après une interaction réelle, sinon le navigateur la refuse.
 const buzz = (p) => { if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(p); };
 
+/** État des ennemis pour la scène : chef mort ?, sbires morts (ordre de room.pack), cible actuelle. */
+function enemyView(g) {
+  const room = g.rooms[g.roomIndex] || {};
+  const front = g.enemy;
+  const alive = new Set();
+  if (front && front.hp > 0 && !front.fled) alive.add(front.slot ?? -1);
+  for (const m of Object.values(g.pack || {})) if (m.hp > 0) alive.add(m.slot);
+  const leaderFront = !front || (front.slot ?? -1) === -1;
+  return {
+    leaderDead: !!front && !front.fled && !alive.has(-1),
+    packDead: (room.pack || []).map((_, i) => !alive.has(i)),
+    targetSlot: front && !leaderFront && front.hp > 0 ? front.slot : -1,
+    hpFrac: front && leaderFront ? front.hp / front.maxHp : null,
+  };
+}
+
 function reactScene(g) {
+  const ev = enemyView(g);
   const r = g.lastResult;
   const room = g.rooms[g.roomIndex];
   const players = app.lobby.players || {};
@@ -178,8 +196,10 @@ function reactScene(g) {
     skillId: r.choiceId?.startsWith('skill:') && champ ? CLASSES[champ.classId]?.skill.id : null,
     success: r.roll ? r.roll.success : true,
     fled: !!g.enemy?.fled,
-    enemyDied: !!(g.enemy && g.enemy.hp <= 0 && !g.enemy.fled),
-    enemyHpFrac: g.enemy ? g.enemy.hp / g.enemy.maxHp : null,
+    enemyDied: ev.leaderDead,
+    enemyHpFrac: ev.hpFrac,
+    packDead: ev.packDead,
+    targetSlot: ev.targetSlot,
     hurt,
     poisoned: r.poisoned || [],
     pets: r.pets || [],
@@ -233,7 +253,10 @@ function syncScene() {
       app.petIntro = petKey;
       setTimeout(() => scene.playPets(g.introPets), 2300); // après l'arrivée de la caméra
     }
-    if (g.phase === 'vote' && g.enemy) scene.setRoomState({ enemyHpFrac: g.enemy.hp / g.enemy.maxHp });
+    if (g.phase === 'vote' && g.enemy) {
+      const ev = enemyView(g);
+      scene.setRoomState({ packDead: ev.packDead, targetSlot: ev.targetSlot, enemyDead: ev.leaderDead, ...(ev.hpFrac !== null ? { enemyHpFrac: ev.hpFrac } : {}) });
+    }
   } else {
     if (app.builtSeed !== 'menu') {
       scene.build(generateDungeon('menu', L?.levelId || 1), getLevel(L?.levelId || 1));
@@ -395,8 +418,14 @@ async function maybeSaveRun() {
   app.profile.inventory = inv;
   app.profile.runs = (app.profile.runs || 0) + 1;
   if (isEndless(g.levelId)) {
-    // Mode infini : record = étage le plus profond atteint
-    app.profile.bestDepth = Math.max(app.profile.bestDepth || 0, g.levelId - ENDLESS_BASE);
+    // Mode infini : record = étage le plus profond atteint, publié au classement s'il progresse
+    const depth = g.levelId - ENDLESS_BASE;
+    if (depth > (app.profile.bestDepth || 0)) {
+      app.profile.bestDepth = depth;
+      const party = Object.keys(g.party || {}).length;
+      leaderboard.submit(app.uid, { name: app.name.slice(0, 16), depth, classId: classId || null, party })
+        .catch((e) => console.warn('Classement indisponible', e));
+    }
   } else if (g.outcome === 'victory') {
     app.profile.wins = (app.profile.wins || 0) + 1;
     app.profile.unlockedLevel = Math.min(LEVELS.length, Math.max(app.profile.unlockedLevel || 1, g.levelId + 1));
@@ -437,6 +466,13 @@ const actions = {
     await enterLobby(multiLobbies, code, true);
   },
   inventory() { app.screen = 'inventory'; render(); },
+  async leaderboard() {
+    app.screen = 'leaderboard';
+    app.board = null;
+    render();
+    try { app.board = await leaderboard.top(20); } catch (e) { console.warn(e); app.board = []; app.boardError = true; }
+    if (app.screen === 'leaderboard') render();
+  },
   menu() { app.screen = 'menu'; render(); },
   logout() { app.screen = 'name'; render(); },
   /** Connexion Google : lie le compte invité (même progression) ou bascule sur un compte existant (fusion). */

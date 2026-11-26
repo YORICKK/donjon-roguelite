@@ -10,8 +10,8 @@ import { ITEMS, RARITY, SHINY_CHANCE } from '../data/items.js';
 import { getLevel, MAP_EXTRA_WEIGHTS } from '../data/levels.js';
 import { ENEMIES, EVENTS, COMBAT_ACTIONS } from '../data/events.js';
 import { heroBonus } from '../data/heroes.js';
-import { TILES, SPINS_PER_ATTACK, MAX_SPINS, ULT_WHEELS, sanitizeWheel } from '../data/wheel.js';
-import { NODE_TYPES, ELITE, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
+import { TILES, SPINS_PER_ATTACK, MAX_SPINS, ULT_WHEELS, sanitizeWheel, tileValue } from '../data/wheel.js';
+import { NODE_TYPES, ELITE, PACK, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
 
 export const VOTE_SECONDS = 30;
 export const PICK_SECONDS = 25;
@@ -159,6 +159,7 @@ export function createGame(seed, levelId, players) {
     enemy: null, round: 0, phase: 'path', votes: {}, deadline: Date.now() + VOTE_SECONDS * 1000,
     gold: 0, xp: 0, plevel: 1, blessed: 0, cursed: false, flags: {}, revealed: false, intro: [], bag: { potion_soin: 1 }, shop: null,
     offers: {}, picks: {}, loot: [], outcome: null, lastResult: null, seedTag: rng.int(0, 9999),
+    kills: 0, floorStart: { gold: 0, xp: 0, loot: 0, kills: 0 }, // récapitulatif d'étage (mode infini)
   };
 }
 
@@ -169,7 +170,7 @@ function enemyStats(game) {
   return {
     e,
     dc: e.dc + level.dcBonus + (elite ? ELITE.dc : 0) + (game.enemy.intent === 'defend' ? 4 : 0),
-    dmgMax: e.dmg * level.enemyScale * (elite ? ELITE.dmg : 1),
+    dmgMax: e.dmg * level.enemyScale * (elite ? ELITE.dmg : 1) * (game.enemy.minion ? PACK.dmg : 1),
   };
 }
 
@@ -187,6 +188,7 @@ function enterRoom(game, seed) {
   const level = getLevel(game.levelId);
   const rng = new Rng(`${seed}|enter|${game.roomIndex}`);
   game.enemy = null;
+  game.pack = [];
   game.shop = null;
   game.intro = [];
   game.introPets = [];
@@ -195,8 +197,24 @@ function enterRoom(game, seed) {
     const n = Object.keys(game.party).length;
     const elite = room.type === 'elite';
     const hp = Math.round(e.hp * level.enemyScale * (1 + 0.5 * (n - 1)) * (elite ? ELITE.hp : 1));
-    game.enemy = { id: room.enemyId, hp, maxHp: hp, elite, rage: 0, phase: 1, intent: 'attack' };
+    game.enemy = { id: room.enemyId, hp, maxHp: hp, elite, rage: 0, phase: 1, intent: 'attack', slot: -1 };
     rollIntent(game, rng);
+    // Sbires : un par joueur en plus du premier, parfois un en solo dans les niveaux avancés
+    const rank = level.rank || level.id;
+    let count = Math.round((n - 1) * PACK.perExtraPlayer);
+    if (rng.chance(Math.min(PACK.soloMax, PACK.soloChance * rank))) count += 1;
+    count = Math.min(PACK.maxSize, count);
+    const leader = game.enemy;
+    game.pack = [];
+    for (let i = 0; i < count; i++) {
+      const id = rng.pick(level.enemies);
+      const mhp = Math.max(4, Math.round(ENEMIES[id].hp * level.enemyScale * PACK.hp));
+      game.enemy = { id, hp: mhp, maxHp: mhp, rage: 0, phase: 1, intent: 'attack', minion: true, slot: i };
+      rollIntent(game, rng);
+      game.pack.push(game.enemy);
+    }
+    game.enemy = leader;
+    game.rooms[game.roomIndex] = { ...room, pack: game.pack.map((m) => m.id) };
     for (const uid of petOwners(game, 'breath')) {
       const dmg = Math.min(game.enemy.hp - 1, rng.dice(2, 6) + 2 * (level.rank || level.id));
       if (dmg <= 0) continue;
@@ -279,7 +297,7 @@ export function getChoices(game, players) {
   if (isFight(room)) {
     const enemy = ENEMIES[game.enemy.id];
     for (const a of COMBAT_ACTIONS) {
-      if (a.noBoss && enemy.boss) continue;
+      if (a.noBoss && (enemy.boss || room.type === 'boss')) continue;
       // Fuir n'est utile qu'en mauvaise posture : rangé avec les compétences et objets, selon l'état du groupe
       if (a.flee) fleeChoice = { id: a.id, label: a.label, stat: a.stat, desc: a.desc };
       else choices.push({ id: a.id, label: a.label, desc: a.desc, wheel: true });
@@ -890,17 +908,34 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   }
   if (game.enemy && !game.enemy.fled) {
     const e = ENEMIES[game.enemy.id];
-    if (game.enemy.hp <= 0) {
-      game.enemy.hp = 0;
-      const elite = game.enemy.elite;
-      lines.push(`🏆 ${e.name}${elite ? ' (élite)' : ''} est vaincu !`);
-      gainGold(game, Math.round(rng.int(e.gold[0], e.gold[1]) * (elite ? ELITE.gold : 1)), lines);
-      gainXp(game, e.xp * (elite ? ELITE.xp : 1));
-      if (e.boss) { gainLoot(game, rng, lines, 1); gainLoot(game, rng, lines); if (rng.chance(0.35)) gainCompanion(game, rng, lines, 1); }
-      else if (elite) { gainLoot(game, rng, lines, ELITE.lootBoost); if (rng.chance(0.12)) gainCompanion(game, rng, lines); }
-      else if (rng.chance(0.4)) gainLoot(game, rng, lines);
-      roomDone = true;
-    } else if (enemyActs) {
+    // Ennemis vaincus : les dégâts en trop passent au suivant ; la salle est finie quand tout le monde est tombé
+    while (game.enemy.hp <= 0) {
+      const dead = game.enemy;
+      const de = ENEMIES[dead.id];
+      const overflow = -dead.hp;
+      dead.hp = 0;
+      const elite = dead.elite;
+      game.kills = (game.kills || 0) + 1;
+      lines.push(`🏆 ${de.name}${elite ? ' (élite)' : dead.minion ? ' (sbire)' : ''} est vaincu !`);
+      if (dead.minion) {
+        gainGold(game, Math.round(rng.int(de.gold[0], de.gold[1]) * PACK.gold), lines);
+        gainXp(game, Math.round(de.xp * PACK.xp));
+        if (rng.chance(0.12)) gainLoot(game, rng, lines);
+      } else {
+        gainGold(game, Math.round(rng.int(de.gold[0], de.gold[1]) * (elite ? ELITE.gold : 1)), lines);
+        gainXp(game, de.xp * (elite ? ELITE.xp : 1));
+        if (de.boss) { gainLoot(game, rng, lines, 1); gainLoot(game, rng, lines); if (rng.chance(0.35)) gainCompanion(game, rng, lines, 1); }
+        else if (elite) { gainLoot(game, rng, lines, ELITE.lootBoost); if (rng.chance(0.12)) gainCompanion(game, rng, lines); }
+        else if (rng.chance(0.4)) gainLoot(game, rng, lines);
+      }
+      const rest = Object.values(game.pack || {});
+      if (de.boss && rest.length) { lines.push(`💨 Privés de leur maître, les sbires s'enfuient !`); game.pack = []; }
+      if (de.boss || !rest.length) { roomDone = true; break; }
+      game.pack = rest.slice(1);
+      game.enemy = { ...rest[0], hp: rest[0].hp - overflow };
+      lines.push(`⚔️ ${ENEMIES[game.enemy.id].name} prend la relève${overflow ? ` (−${Math.min(overflow, rest[0].hp)} PV dans l'élan)` : ''} !`);
+    }
+    if (roomDone) { /* salle terminée */ } else if (enemyActs) {
       enemyAction = enemyAct(game, players, rng, lines, { failed, guarded });
       if (e.boss && game.enemy.phase === 1 && game.enemy.hp <= game.enemy.maxHp / 2) {
         game.enemy.phase = 2;
@@ -908,6 +943,15 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
         lines.push(`🔥 ${e.name} est blessé et devient furieux ! (phase 2)`);
       }
       rollIntent(game, rng);
+      // Les sbires frappent aussi, chacun selon son intention
+      const front = game.enemy;
+      game.pack = Object.values(game.pack || {}).map((m) => {
+        game.enemy = { ...m };
+        if (Object.values(game.party).some((pm) => pm.alive)) enemyAct(game, players, rng, lines, { failed, guarded });
+        rollIntent(game, rng);
+        return game.enemy;
+      });
+      game.enemy = front;
     }
   }
   if (roomDone) {
@@ -934,7 +978,10 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   game.votes = {};
   if (!anyAlive) game.outcome = 'defeat';
   else if (roomDone && room.type === 'boss' && !level.endless) game.outcome = 'victory';
-  else if (roomDone && room.type === 'boss') game.banked = Object.values(game.loot || {}).length; // butin de l'étage assuré
+  else if (roomDone && room.type === 'boss') {
+    game.banked = Object.values(game.loot || {}).length; // butin de l'étage assuré
+    if (anyAlive) game.pendingCopy = true; // récompense : copier une tuile pour le reste du run
+  }
   return game;
 }
 
@@ -948,6 +995,7 @@ function takeStairs(game, choiceId, seed) {
     game.votes = {};
     return game;
   }
+  game.floorStart = { gold: game.gold || 0, xp: game.xp || 0, loot: Object.values(game.loot || {}).length, kills: game.kills || 0 };
   game.levelId += 1;
   game.map = generateMap(`${seed}|${game.levelId}`, game.levelId);
   game.nodeId = null;
@@ -1005,9 +1053,11 @@ export function advance(gameIn, seed = '') {
         game.offers[uid] = offer;
       }
       game.phase = 'levelup';
+      game.offerKind = 'boon';
       game.deadline = Date.now() + PICK_SECONDS * 1000;
       return game;
     }
+    if (game.pendingCopy && setupCopy(game)) return game;
     game.phase = 'path';
   } else {
     game.round += 1;
@@ -1021,7 +1071,23 @@ export function advance(gameIn, seed = '') {
 /** Applique les bonus choisis (ou un bonus au hasard pour qui n'a pas choisi), puis retour à la carte. */
 export function finishLevelUp(gameIn, seed = '') {
   const game = structuredClone(gameIn);
-  const rng = new Rng(`${seed}|picks|${game.plevel}`);
+  const rng = new Rng(`${seed}|picks|${game.plevel}|${game.offerKind || 'boon'}|${game.levelId}`);
+  if (game.offerKind === 'copy') {
+    for (const [uid, offer] of Object.entries(game.offers || {})) {
+      const m = game.party[uid];
+      if (!m?.alive) continue;
+      const list = Object.values(offer);
+      copyTile(m, list.includes(game.picks?.[uid]) ? game.picks[uid] : rng.pick(list));
+    }
+    game.pendingCopy = false;
+    game.offerKind = null;
+    game.offers = {};
+    game.picks = {};
+    game.phase = 'path';
+    game.votes = {};
+    game.deadline = Date.now() + VOTE_SECONDS * 1000;
+    return game;
+  }
   for (const [uid, offer] of Object.entries(game.offers || {})) {
     const m = game.party[uid];
     if (!m?.alive) continue;
@@ -1034,10 +1100,57 @@ export function finishLevelUp(gameIn, seed = '') {
   }
   game.offers = {};
   game.picks = {};
+  game.offerKind = null;
+  if (game.pendingCopy && setupCopy(game)) return game;
   game.phase = 'path';
   game.votes = {};
   game.deadline = Date.now() + VOTE_SECONDS * 1000;
   return game;
+}
+
+// ---------- Mode infini : copier une tuile (valable seulement pendant le run) ----------
+export const COPY_OFFERS = 4;
+
+/** Tuiles de la roue du héros qu'il peut copier : les plus fortes, sans doublon ni « Raté ». */
+export function copyOffers(m) {
+  const wheel = Object.values(m.wheel || {});
+  const ids = [...new Set(wheel)].filter((id) => TILES[id] && TILES[id].kind !== 'miss');
+  return ids.sort((a, b) => tileValue(b) - tileValue(a)).slice(0, COPY_OFFERS);
+}
+
+/** Case remplacée par une copie : un « Raté » d'abord, sinon la tuile la plus faible (autre que celle copiée). */
+export function copyTarget(m, tileId) {
+  const wheel = Object.values(m.wheel || {});
+  const miss = wheel.findIndex((id) => TILES[id]?.kind === 'miss');
+  if (miss >= 0) return miss;
+  let best = -1;
+  wheel.forEach((id, i) => { if (id !== tileId && (best < 0 || tileValue(id) < tileValue(wheel[best]))) best = i; });
+  return best;
+}
+
+function copyTile(m, tileId) {
+  const wheel = Object.values(m.wheel || {});
+  const i = copyTarget(m, tileId);
+  if (i < 0 || !TILES[tileId]) return;
+  m.copies = [...Object.values(m.copies || {}), { tile: tileId, replaced: wheel[i] }];
+  wheel[i] = tileId;
+  m.wheel = wheel;
+}
+
+/** Ouvre le choix de la copie (phase « levelup », offerKind « copy »). Faux si personne ne peut copier. */
+function setupCopy(game) {
+  game.offers = {};
+  game.picks = {};
+  for (const [uid, m] of Object.entries(game.party)) {
+    if (!m.alive) continue;
+    const offer = copyOffers(m);
+    if (offer.length) game.offers[uid] = offer;
+  }
+  if (!Object.keys(game.offers).length) { game.pendingCopy = false; return false; }
+  game.offerKind = 'copy';
+  game.phase = 'levelup';
+  game.deadline = Date.now() + PICK_SECONDS * 1000;
+  return true;
 }
 
 /**
@@ -1052,4 +1165,22 @@ export function keptLoot(game) {
   if (!rest.length) return safe;
   const best = [...rest].sort((a, b) => RARITY[ITEMS[b].rarity].rank - RARITY[ITEMS[a].rarity].rank)[0];
   return [...safe, best];
+}
+
+/** Mode infini : bilan de l'étage en cours (or, XP, ennemis vaincus, objets trouvés, état du groupe). */
+export function floorRecap(game) {
+  const st = game.floorStart || { gold: 0, xp: 0, loot: 0, kills: 0 };
+  const loot = Object.values(game.loot || {});
+  const members = Object.values(game.party || {});
+  return {
+    gold: (game.gold || 0) - st.gold,
+    xp: (game.xp || 0) - st.xp,
+    kills: (game.kills || 0) - st.kills,
+    found: loot.slice(st.loot),
+    banked: loot.slice(0, game.banked || 0),
+    hp: members.reduce((a, m) => a + (m.alive ? m.hp : 0), 0),
+    maxHp: members.reduce((a, m) => a + m.maxHp, 0),
+    alive: members.filter((m) => m.alive).length,
+    total: members.length,
+  };
 }
