@@ -1,7 +1,7 @@
 // Contrôleur de l'application : écrans, salon, boucle de l'hôte, sauvegarde du butin.
 import { MAX_EQUIPPED } from './data/items.js';
 import { heroLevel } from './data/heroes.js';
-import { STARTER_WHEEL, WHEEL_SIZE, TILES, ownedTiles } from './data/wheel.js';
+import { WHEEL_SIZE, TILES, ownedTiles, autoWheel, classStarterWheel } from './data/wheel.js';
 import { animateWheels, settleWheels, spinsDuration, ultTiming } from './ui/wheel.js';
 import { LEVELS, getLevel } from './data/levels.js';
 import { Rng, randomSeed } from './core/rng.js';
@@ -515,8 +515,15 @@ const actions = {
   resetWheel() {
     const me = app.lobby.players[app.uid];
     app.wheelSlot = 0;
-    saveWheel(me.classId, [...STARTER_WHEEL]);
+    saveWheel(me.classId, classStarterWheel(me.classId));
   },
+  autoWheel() {
+    const me = app.lobby.players[app.uid];
+    app.wheelSlot = 0;
+    saveWheel(me.classId, autoWheel(me.classId, app.profile.inventory || {}, CLASSES[me.classId].stats));
+    toast('Roue optimale : vos meilleures tuiles sont placées.');
+  },
+  tileFilter(el) { app.tileFilter = el.dataset.id; render(); },
   ready() {
     const me = app.lobby.players[app.uid];
     upd({ [`players/${app.uid}/ready`]: !me.ready });

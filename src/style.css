@@ -464,11 +464,25 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 /* éditeur de roue (salon) */
 .wheel-editor { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
 .wheel-editor .wheel-stage { padding-top: 6px; }
-.tiles-pick { max-height: 300px; overflow-y: auto; padding-right: 4px; }
+.tiles-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; max-height: 330px; overflow-y: auto; padding: 2px 4px 2px 0; margin-bottom: 8px; }
+.tile-pick { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; column-gap: 6px; align-items: center; text-align: left; padding: 6px 8px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--tc) 60%, #000); border-left: 5px solid var(--tc); background: color-mix(in srgb, var(--tc) 16%, #15100b); color: inherit; cursor: pointer; }
+.tile-pick:hover:not(:disabled) { background: color-mix(in srgb, var(--tc) 32%, #15100b); }
+.tile-pick .ico { grid-row: span 2; font-size: 1.4rem; }
+.tile-pick .nm { font-weight: 700; font-size: 0.86rem; color: var(--rc); }
+.tile-pick .tx { grid-column: 2; font-size: 0.72rem; opacity: 0.75; line-height: 1.15; }
+.tile-pick .n { grid-row: 1 / span 2; grid-column: 3; font-size: 0.75rem; font-weight: 700; opacity: 0.85; }
+.seg-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 6px; }
+.wheel-side .seg-tabs button { padding: 3px 10px; min-height: 0; width: auto; line-height: 1.3; font-size: 0.78rem; border-radius: 99px; }
+.wheel-side .seg-tabs button.on { background: var(--gold, #e3b25a); color: #1b0f08; border-color: transparent; }
+.slot-now { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 10px; border-left: 5px solid var(--tc); background: color-mix(in srgb, var(--tc) 18%, #15100b); }
+.slot-now .ico { font-size: 1.6rem; }
+.row-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.wheel.many .seg-ico { font-size: 18px; }
+.wheel.many .seg-name { font-size: 7.5px; }
 .item.tile { border-left: 4px solid var(--tc); }
 @media (max-width: 720px) {
   .wheel-editor { grid-template-columns: 1fr; }
-  .wheel-editor .wheel { --size: 200px !important; }
+  .wheel-editor .wheel { --size: min(300px, 86vw) !important; }
   .tiles-pick { max-height: none; }
 }
 @media (prefers-reduced-motion: reduce) {

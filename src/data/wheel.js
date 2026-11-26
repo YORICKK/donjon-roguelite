@@ -1,14 +1,16 @@
-// La roue de combat : chaque héros a une roue de 8 tuiles de même taille. À chaque attaque, il la fait
+// La roue de combat : chaque héros a une roue de 12 tuiles de même taille. À chaque attaque, il la fait
 // tourner 2 fois et applique les 2 tuiles obtenues. Tout le monde commence avec la même roue (médiocre) ;
 // on gagne des tuiles pendant les runs pour remplacer les mauvaises (une roue par classe).
 //
 // Tuile : { name, icon, rarity, tier, kind, stat?, base?, mult?, hits?, text }
 //   kind : miss (rien) | dmg (base + mult × stat + bonus de dégâts) | heal (groupe : base + mult × stat)
 //          | guard (bloque l'attaque ennemie du tour, + soin éventuel) | poison (poison sur l'ennemi)
-//          | gold (or) | jackpot (double l'autre tuile) | respin (2 tours de roue en plus) | smite (dégâts + soin)
+//          | gold (or) | jackpot (1 lancer de plus, double tout le résultat, cumulable) | respin (2 tours de roue en plus) | smite (dégâts + soin)
 //   starter : fait partie de la roue de départ (exemplaires fournis gratuitement, jamais en butin).
 
-export const WHEEL_SIZE = 8;
+export const WHEEL_SIZE = 12;
+/** Nombre maximal de lancers de la roue principale par attaque (Encore !, Jackpot). */
+export const MAX_SPINS = 8;
 export const SPINS_PER_ATTACK = 2;
 
 export const STAT_COLORS = { for: '#c0392b', int: '#2e86de', dex: '#27ae60', sag: '#e1b12c' };
@@ -47,7 +49,7 @@ export const TILES = {
   t_encore: { name: 'Encore !', icon: '🔄', rarity: 'epique', tier: 2, kind: 'respin', text: 'Fait tourner la roue 2 fois de plus' },
 
   // ---------- Légendaires ----------
-  t_jackpot: { name: 'Jackpot', icon: '💎', rarity: 'legendaire', tier: 2, kind: 'jackpot', text: "Double l'effet de l'autre tuile" },
+  t_jackpot: { name: 'Jackpot', icon: '💎', rarity: 'legendaire', tier: 2, kind: 'jackpot', text: 'Un lancer de plus et double tout le résultat (2 Jackpots : ×4, puis ×8, ×16…)' },
   t_colere: { name: 'Colère divine', icon: '🌩️', rarity: 'legendaire', tier: 3, kind: 'smite', stat: 'sag', base: 8, mult: 2, heal: 4, text: '8 + 2 × SAG et soigne le groupe de 4' },
   t_destin: { name: 'Lame du destin', icon: '🌟', rarity: 'legendaire', tier: 3, kind: 'dmg', stat: 'for', base: 14, mult: 2, text: '14 + 2 × FOR' },
   t_apocalypse: { name: 'Apocalypse', icon: '🌋', rarity: 'legendaire', tier: 3, kind: 'dmg', stat: 'int', base: 16, mult: 2, text: '16 + 2 × INT' },
@@ -120,8 +122,8 @@ export const ULT_WHEELS = {
 
 for (const [id, t] of Object.entries(TILES)) { t.id = id; t.tile = true; t.tier ||= 1; }
 
-/** Roue de départ, identique pour tous : deux « Raté » et une tuile de chaque stat. */
-export const STARTER_WHEEL = ['t_gifle', 't_rate', 't_etincelle', 't_parade', 't_croche', 't_rate', 't_priere', 't_caillou'];
+/** Roue de départ, identique pour tous : des « Raté », une tuile de chaque stat, des cailloux et des parades. */
+export const STARTER_WHEEL = ['t_gifle', 't_rate', 't_etincelle', 't_parade', 't_croche', 't_rate', 't_priere', 't_caillou', 't_caillou', 't_rate', 't_caillou', 't_parade'];
 
 /** Roue de départ d'une classe : la roue commune, avec la tuile d'ulti de la classe à la place d'un « Raté ». */
 export function classStarterWheel(classId) {
@@ -165,10 +167,58 @@ export function sanitizeWheel(wheel, inventory = null, classId = null) {
   if (!list.length) return classId ? classStarterWheel(classId) : [...STARTER_WHEEL];
   const left = inventory ? ownedTiles(inventory, classId) : null;
   const out = [];
+  const start = classId ? classStarterWheel(classId) : STARTER_WHEEL;
   for (let i = 0; i < WHEEL_SIZE; i++) {
-    let id = tileAllowed(list[i], classId) ? list[i] : 't_rate';
+    const want = i < list.length ? list[i] : start[i];
+    let id = tileAllowed(want, classId) ? want : 't_rate';
     if (left) { if ((left[id] || 0) > 0) left[id] -= 1; else id = 't_rate'; }
     out.push(id);
   }
+  return out;
+}
+
+// ---------- Aide au choix des tuiles ----------
+/** Familles affichées dans l'éditeur. */
+export const TILE_GROUPS = { attaque: '⚔️ Attaque', defense: '🛡️ Défense', special: '✨ Spéciales' };
+export function tileGroup(id) {
+  const k = TILES[id]?.kind;
+  if (k === 'dmg' || k === 'smite') return 'attaque';
+  if (k === 'heal' || k === 'guard' || k === 'revive' || k === 'bless') return 'defense';
+  return 'special';
+}
+
+/** Valeur approximative d'une tuile pour des stats données (dégâts espérés ; soin, garde et spéciales estimés). */
+export function tileValue(id, stats = {}) {
+  const t = TILES[id];
+  if (!t) return 0;
+  const st = t.stat ? Math.max(0, stats[t.stat] || 0) : 0;
+  const amount = (t.base || 0) + (t.mult || 1) * st;
+  switch (t.kind) {
+    case 'dmg': return amount * (t.hits || 1);
+    case 'smite': return amount + t.heal * 0.6;
+    case 'heal': return amount * 0.6;
+    case 'guard': return 4 + (t.base || 0) * 0.6;
+    case 'poison': return t.base * 2.5;
+    case 'gold': return 3;
+    case 'jackpot': return 14;
+    case 'respin': return 9;
+    case 'bless': return 3;
+    case 'revive': return 5;
+    case 'ult': { const d = ULT_WHEELS[t.ult]; return (d.wheel.reduce((a, u) => a + tileValue(u, stats), 0) / d.wheel.length) * d.spins; }
+    default: return 0;
+  }
+}
+
+/** Meilleure roue possible avec les tuiles possédées (les plus fortes, autant d'exemplaires que possédés). */
+export function autoWheel(classId, inventory = {}, stats = {}) {
+  const owned = ownedTiles(inventory, classId);
+  const pool = [];
+  for (const [id, n] of Object.entries(owned)) for (let k = 0; k < Math.min(n, WHEEL_SIZE); k++) pool.push(id);
+  pool.sort((a, b) => tileValue(b, stats) - tileValue(a, stats));
+  const wheel = pool.slice(0, WHEEL_SIZE);
+  while (wheel.length < WHEEL_SIZE) wheel.push('t_rate');
+  // on alterne les tuiles fortes et faibles pour une roue plus lisible
+  const out = [];
+  for (let i = 0; i < WHEEL_SIZE; i++) out.push(i % 2 ? wheel[WHEEL_SIZE - 1 - (i >> 1)] : wheel[i >> 1]);
   return out;
 }

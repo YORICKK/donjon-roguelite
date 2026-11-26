@@ -247,7 +247,7 @@ test('roue de combat : 2 lancers, roue de départ commune, tuiles limitées aux 
   assert.deepEqual(w.slice(0, 3), ['t_hache', 't_hache', 't_rate']);
   assert.deepEqual(sanitizeWheel([]), STARTER_WHEEL);
   // en combat : chaque héros vivant lance sa roue 2 fois (plus avec « Encore ! »)
-  const P = { a: { name: 'A', classId: 'guerrier', equipped: [] }, b: { name: 'B', classId: 'clerc', equipped: [], wheel: Array(8).fill('t_encore') } };
+  const P = { a: { name: 'A', classId: 'guerrier', equipped: [] }, b: { name: 'B', classId: 'clerc', equipped: [], wheel: Array(12).fill('t_encore') } };
   let g = createGame('wheel', 1, P);
   const n = g.map.floors[0][0];
   n.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
@@ -257,9 +257,9 @@ test('roue de combat : 2 lancers, roue de départ commune, tuiles limitées aux 
   const r = resolveChoice(g, P, 'roue', 'wheel').lastResult;
   const spins = Object.fromEntries(r.spins.map((s) => [s.uid, s.picks]));
   assert.equal(spins.a.length, 2);
-  assert.equal(spins.b.length, 6, '« Encore ! » relance jusqu\'à 6 fois au maximum');
+  assert.equal(spins.b.length, 8, '« Encore ! » relance jusqu\'à 8 fois au maximum');
   // une roue pleine de parades bloque toujours l'attaque normale
-  const G = { a: { name: 'A', classId: 'guerrier', equipped: [], wheel: Array(8).fill('t_parade') } };
+  const G = { a: { name: 'A', classId: 'guerrier', equipped: [], wheel: Array(12).fill('t_parade') } };
   for (let k = 0; k < 20; k++) {
     let h = createGame(`g${k}`, 1, G);
     const m = h.map.floors[0][0];
@@ -282,7 +282,7 @@ test('ultis : chaque classe a sa tuile, sa roue apparaît et tourne plusieurs fo
   }
   assert.ok(ULT_WHEELS.assassin.spins > ULT_WHEELS.berserker.spins, 'l\'assassin lance beaucoup plus');
   // une roue pleine d'ultis : la roue spéciale tourne à chaque fois
-  const P = { a: { name: 'A', classId: 'voleur', equipped: [], wheel: Array(8).fill('ult_voleur') } };
+  const P = { a: { name: 'A', classId: 'voleur', equipped: [], wheel: Array(12).fill('ult_voleur') } };
   let g = createGame('ult', 1, P);
   const n = g.map.floors[0][0];
   n.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
@@ -293,4 +293,21 @@ test('ultis : chaque classe a sa tuile, sa roue apparaît et tourne plusieurs fo
   for (const u of sp.ults) { assert.equal(u.wheel, 'assassin'); assert.ok(u.picks.length >= 7); }
   assert.ok(r.lines.some((l) => l.includes("Roue de l'assassin")));
   assert.ok(Object.values(TILES).filter((t) => t.ultOnly).every((t) => t.kind && t.icon));
+});
+
+test('jackpot : un lancer de plus et un multiplicateur qui double à chaque jackpot', async () => {
+  const { MAX_SPINS, TILES, WHEEL_SIZE } = await import('../src/data/wheel.js');
+  const wheel = Array(WHEEL_SIZE).fill('t_jackpot'); wheel[0] = 't_epee'; wheel[1] = 't_epee';
+  for (let k = 0; k < 15; k++) {
+    const P = { a: { name: 'A', classId: 'guerrier', equipped: [], wheel } };
+    let g = createGame(`jp${k}`, 1, P);
+    const n = g.map.floors[0][0];
+    n.room = { type: 'combat', enemyId: 'ogre', shape: { w: 10, d: 10, pillars: 0, torches: 2 } };
+    g = resolveChoice(g, P, `go:${n.id}`, `jp${k}`);
+    const r = resolveChoice(g, P, 'roue', `jp${k}`).lastResult;
+    const picks = r.spins[0].picks;
+    const j = picks.filter((i) => TILES[wheel[i]].kind === 'jackpot').length;
+    assert.equal(picks.length, Math.min(MAX_SPINS, 2 + j), 'chaque jackpot ajoute un lancer');
+    if (j) assert.ok(r.lines.some((l) => l.includes(`×${2 ** j}`)), `multiplicateur ×${2 ** j}`);
+  }
 });

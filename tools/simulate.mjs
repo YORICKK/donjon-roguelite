@@ -14,7 +14,7 @@ import { LEVELS } from '../src/data/levels.js';
 import { ENEMIES } from '../src/data/events.js';
 import { BOONS } from '../src/data/run.js';
 import { heroLevel, MAIN_STAT } from '../src/data/heroes.js';
-import { TILES, WHEEL_SIZE, STARTER_WHEEL, ULT_WHEELS, ownedTiles, classStarterWheel } from '../src/data/wheel.js';
+import { TILES, autoWheel, classStarterWheel } from '../src/data/wheel.js';
 
 
 // ---------- Politique du bot ----------
@@ -134,35 +134,7 @@ function bestGear(classId, owned) {
   };
   return owned.filter((id) => !ITEMS[id].companion && !ITEMS[id].tile).sort((a, b) => score(b) - score(a)).slice(0, 2);
 }
-/** Valeur approximative d'une tuile pour une classe (dégâts espérés ; soin, garde et spéciales estimés). */
-function tileValue(classId, id) {
-  const t = TILES[id];
-  const st = t.stat ? Math.max(0, CLASSES[classId].stats[t.stat]) : 0;
-  const amount = (t.base || 0) + (t.mult || 1) * st;
-  switch (t.kind) {
-    case 'dmg': return amount * (t.hits || 1);
-    case 'smite': return amount + t.heal * 0.6;
-    case 'heal': return amount * 0.6;
-    case 'guard': return 4 + (t.base || 0) * 0.6;
-    case 'poison': return t.base * 2.5;
-    case 'gold': return 3;
-    case 'jackpot': return 9;
-    case 'respin': return 8;
-    case 'bless': return 3;
-    case 'revive': return 5;
-    case 'ult': { const d = ULT_WHEELS[t.ult]; return (d.wheel.reduce((a, id) => a + tileValue(classId, id), 0) / d.wheel.length) * d.spins; }
-    default: return 0;
-  }
-}
-export function bestWheel(classId, inventory) {
-  const owned = ownedTiles(inventory, classId);
-  const pool = [];
-  for (const [id, n] of Object.entries(owned)) for (let k = 0; k < Math.min(n, WHEEL_SIZE); k++) pool.push(id);
-  pool.sort((a, b) => tileValue(classId, b) - tileValue(classId, a));
-  const wheel = pool.slice(0, WHEEL_SIZE);
-  while (wheel.length < WHEEL_SIZE) wheel.push('t_rate');
-  return wheel;
-}
+export const bestWheel = (classId, inventory) => autoWheel(classId, inventory, CLASSES[classId].stats);
 
 const PET_RANK = { pet_phenix: 7, pet_dragon: 6, pet_golem: 5, pet_ours: 4, pet_chat: 3.5, pet_loup: 3, pet_chien: 2, pet_ecureuil: 1 };
 function bestPet(owned) {

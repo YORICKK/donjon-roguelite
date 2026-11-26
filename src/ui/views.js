@@ -1,7 +1,7 @@
 // Gabarits HTML des écrans. Fonctions pures : (app, état) -> chaîne HTML.
 import { CLASSES, STAT_LABELS } from '../data/classes.js';
 import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus, isGear } from '../data/items.js';
-import { TILES, WHEEL_SIZE, ULT_WHEELS, ownedTiles, sanitizeWheel, tileColor } from '../data/wheel.js';
+import { TILES, WHEEL_SIZE, ULT_WHEELS, TILE_GROUPS, ownedTiles, sanitizeWheel, tileColor, tileGroup, tileValue } from '../data/wheel.js';
 import { wheelSvg } from './wheel.js';
 import { LEVELS, getLevel } from '../data/levels.js';
 import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
@@ -481,38 +481,47 @@ function wheelEditor(app, me) {
   const slot = Math.min(WHEEL_SIZE - 1, Math.max(0, app.wheelSlot || 0));
   const owned = ownedTiles(app.profile.inventory || {}, me.classId);
   const used = wheel.reduce((m, id) => ({ ...m, [id]: (m[id] || 0) + 1 }), {});
-  const order = { commun: 0, rare: 1, epique: 2, legendaire: 3 };
-  const ids = Object.keys(owned).filter((id) => TILES[id]).sort((a, b) => order[TILES[b].rarity] - order[TILES[a].rarity] || TILES[a].name.localeCompare(TILES[b].name));
+  const stats = CLASSES[me.classId].stats;
+  const filter = TILE_GROUPS[app.tileFilter] ? app.tileFilter : 'all';
+  // seulement les tuiles encore disponibles, les plus fortes d'abord (« Raté » à la fin : vider une case)
+  const left = (id) => (owned[id] === Infinity ? Infinity : owned[id] - (used[id] || 0));
+  const ids = Object.keys(owned)
+    .filter((id) => TILES[id] && id !== 't_rate' && left(id) > 0 && (filter === 'all' || tileGroup(id) === filter))
+    .sort((x, y) => tileValue(y, stats) - tileValue(x, stats));
   const locked = me.ready && !app.solo ? 'disabled' : '';
   const cur = TILES[wheel[slot]];
+  const chip = (id) => {
+    const t = TILES[id];
+    const n = left(id);
+    return `<button class="tile-pick" style="--tc:${tileColor(id)};--rc:${RARITY[t.rarity]?.color || '#888'}" data-action="tile" data-id="${id}" title="${esc(t.text)}" ${locked}>
+      <span class="ico">${t.icon}</span><span class="nm">${esc(t.name)}</span><span class="tx">${esc(t.text)}</span>${n !== Infinity ? `<span class="n">×${n}</span>` : ''}</button>`;
+  };
   return `
     <div class="wheel-editor">
-      <div class="wheel-stage">${wheelSvg(wheel, { size: 230, selected: slot, editable: !locked, uid: 'editor' })}</div>
+      <div class="wheel-stage">${wheelSvg(wheel, { size: 340, selected: slot, editable: !locked, uid: 'editor' })}</div>
       <div class="wheel-side">
         <h3>Votre roue <span class="chip">${CLASSES[me.classId].name}</span></h3>
-        <p class="muted small">À chaque attaque, la roue tourne 2 fois. Touchez une case, puis une tuile pour l'y placer. Toutes les cases ont la même taille : plus une tuile est présente, plus elle tombe souvent.</p>
-        <p class="small">Case ${slot + 1} : <b>${cur.icon} ${esc(cur.name)}</b> <span class="muted">— ${esc(cur.text)}</span></p>
-        <div class="items tiles-pick">
-          ${ids.map((id) => {
-            const left = owned[id] === Infinity ? '∞' : owned[id] - (used[id] || 0);
-            const can = !locked && (left === '∞' || left > 0) && wheel[slot] !== id;
-            return tileChip(id, `<span class="chip">${left === '∞' ? '∞' : `${left}/${owned[id]}`}</span>`, `data-action="tile" data-id="${id}" ${can ? '' : 'disabled'}`, wheel[slot] === id);
-          }).join('')}
+        <p class="muted small">${WHEEL_SIZE} cases, 2 lancers par attaque. <b>1.</b> Touchez une case de la roue. <b>2.</b> Touchez une tuile : elle prend sa place.</p>
+        <div class="slot-now" style="--tc:${tileColor(wheel[slot])}"><span class="ico">${cur.icon}</span><span><b>Case ${slot + 1} : ${esc(cur.name)}</b><br><span class="muted small">${esc(cur.text)}</span></span></div>
+        <div class="seg-tabs">
+          ${[['all', 'Tout'], ...Object.entries(TILE_GROUPS)].map(([k, l]) => `<button class="${filter === k ? 'on' : ''}" data-action="tileFilter" data-id="${k}">${l}</button>`).join('')}
         </div>
-        <button class="ghost small" data-action="resetWheel" ${locked}>↺ Remettre la roue de départ</button>
+        <div class="tiles-pick">
+          ${ids.map(chip).join('') || '<p class="muted small">Aucune tuile disponible ici : gagnez-en pendant les runs !</p>'}
+          ${wheel[slot] !== 't_rate' ? chip('t_rate') : ''}
+        </div>
+        <div class="row-btns">
+          <button class="small" data-action="autoWheel" ${locked}>✨ Roue optimale</button>
+          <button class="ghost small" data-action="resetWheel" ${locked}>↺ Roue de départ</button>
+        </div>
       </div>
-    </div>
-    <div class="action-bar sticky">
-      <button data-action="prevStep" ${locked}>◀ Classe</button>
-      <button class="primary grow" data-action="nextStep">Suivant : équipement ▶</button>
-      <button class="ghost" data-action="leave">Quitter</button>
     </div>`;
 }
 
 function spinsBlock(g, players, r, myUid, animating = false) {
   const spins = Object.values(r.spins || {}).map((x) => ({ uid: x.uid, picks: Object.values(x.picks || {}), ults: Object.values(x.ults || {}) }));
   const n = spins.length;
-  const size = n <= 1 ? 210 : n === 2 ? 160 : 118;
+  const size = n <= 1 ? 270 : n === 2 ? 200 : 150;
   // la roue du joueur en premier
   spins.sort((a, b) => (b.uid === myUid) - (a.uid === myUid));
   return `<div class="spins n${Math.min(n, 4)}">${spins.map((sp) => {

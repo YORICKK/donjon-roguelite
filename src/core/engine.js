@@ -10,7 +10,7 @@ import { ITEMS, RARITY, SHINY_CHANCE } from '../data/items.js';
 import { getLevel, MAP_EXTRA_WEIGHTS } from '../data/levels.js';
 import { ENEMIES, EVENTS, COMBAT_ACTIONS } from '../data/events.js';
 import { heroBonus } from '../data/heroes.js';
-import { TILES, WHEEL_SIZE, SPINS_PER_ATTACK, ULT_WHEELS, sanitizeWheel } from '../data/wheel.js';
+import { TILES, SPINS_PER_ATTACK, MAX_SPINS, ULT_WHEELS, sanitizeWheel } from '../data/wheel.js';
 import { NODE_TYPES, ELITE, CONSUMABLES, ITEM_PRICES, XP_LEVELS, BOONS } from '../data/run.js';
 
 export const VOTE_SECONDS = 30;
@@ -604,17 +604,18 @@ function applyTile(game, players, uid, c, t, bonus, mult, halve) {
   return out;
 }
 
-/** Lance une roue n fois (« Encore ! » / « Surcharge » ajoutent 2 lancers). Retourne les index obtenus. */
+/** Lance une roue n fois (« Encore ! » / « Surcharge » : 2 lancers de plus, Jackpot : 1 de plus). Retourne les index obtenus. */
 function spinIndexes(rng, wheel, n, luck, cap) {
   const picks = [];
   let toSpin = n;
   let rerolls = luck;
   while (toSpin > 0 && picks.length < cap) {
-    let idx = rng.int(0, WHEEL_SIZE - 1);
-    if (TILES[wheel[idx]].kind === 'miss' && rerolls > 0) { rerolls -= 1; idx = rng.int(0, WHEEL_SIZE - 1); }
+    let idx = rng.int(0, wheel.length - 1);
+    if (TILES[wheel[idx]].kind === 'miss' && rerolls > 0) { rerolls -= 1; idx = rng.int(0, wheel.length - 1); }
     picks.push(idx);
     toSpin -= 1;
     if (TILES[wheel[idx]].kind === 'respin') toSpin += 2;
+    if (TILES[wheel[idx]].kind === 'jackpot') toSpin += 1;
   }
   return picks;
 }
@@ -636,7 +637,7 @@ function spinWheels(game, players, rng, lines) {
     const wheel = sanitizeWheel(m.wheel, null, classId);
     const c = charOf(game, players, uid);
     const bonus = () => dmgBonusOf(players, uid, c) + (game.blessed > 0 ? 2 : 0) - (game.cursed ? 1 : 0);
-    const picks = spinIndexes(rng, wheel, SPINS_PER_ATTACK, c.luck, 6);
+    const picks = spinIndexes(rng, wheel, SPINS_PER_ATTACK, c.luck, MAX_SPINS);
     const tiles = picks.map((i) => TILES[wheel[i]]);
     const jm = 2 ** tiles.filter((t) => t.kind === 'jackpot').length;
     let dealt = 0, mainStat = null;
@@ -648,14 +649,15 @@ function spinWheels(game, players, rng, lines) {
         ults.push(t);
         continue;
       }
-      const mult = t.kind === 'jackpot' || t.kind === 'respin' ? 1 : jm;
+      if (t.kind === 'jackpot') { parts.push(`${t.icon} JACKPOT`); continue; }
+      const mult = t.kind === 'respin' ? 1 : jm;
       const r = applyTile(game, players, uid, c, t, bonus(), mult, halve);
       dealt += r.dealt;
       guarded ||= r.guard;
       if (r.stat && (!mainStat || r.dealt > 0)) mainStat = r.stat;
       parts.push(r.part);
     }
-    lines.push(`🎡 ${players[uid].name} : ${parts.join(' + ')}${dealt ? ` → ${dealt} dégâts` : ''}`);
+    lines.push(`🎡 ${players[uid].name} : ${parts.join(' + ')}${jm > 1 ? ` — 💎 tout ×${jm} !` : ''}${dealt ? ` → ${dealt} dégâts` : ''}`);
     // Ultis : la roue spéciale de la classe
     const ultSpins = [];
     for (const t of ults) {

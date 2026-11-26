@@ -1,9 +1,8 @@
 // Roue de combat façon casino : SVG (8 cases égales, jante dorée, ampoules qui clignotent, aiguille),
 // et animation des lancers (la roue décélère et s'arrête sur la case tirée par le moteur).
-import { TILES, WHEEL_SIZE, tileColor } from '../data/wheel.js';
+import { TILES, tileColor } from '../data/wheel.js';
 import { esc } from './dom.js';
 
-const SEG = 360 / WHEEL_SIZE;
 const R = 100; // rayon de la zone des cases
 const BULBS = 16;
 
@@ -20,11 +19,13 @@ function shade(hex, f) {
 
 /**
  * SVG d'une roue. opts : { size, uid, selected (index de case en surbrillance), editable (cases cliquables) }.
- * La case i est centrée sur l'angle i × 45° (0° = en haut, sous l'aiguille).
+ * La case i est centrée sur l'angle i × (360° / nombre de cases) (0° = en haut, sous l'aiguille).
  */
 export function wheelSvg(wheel, opts = {}) {
   const { size = 220, uid = '', selected = -1, editable = false, label = '' } = opts;
   const id = `w${Math.random().toString(36).slice(2, 8)}`;
+  const SEG = 360 / wheel.length;
+  const many = wheel.length > 8;
   const segs = wheel.map((tid, i) => {
     const t = TILES[tid] || TILES.t_rate;
     const a0 = i * SEG - SEG / 2;
@@ -32,9 +33,10 @@ export function wheelSvg(wheel, opts = {}) {
     const [x0, y0] = polar(a0, R);
     const [x1, y1] = polar(a1, R);
     const col = tileColor(tid);
-    const [ix, iy] = polar(i * SEG, R * 0.66);
-    const [nx, ny] = polar(i * SEG, R * 0.36);
-    const short = t.name.length > 11 ? `${t.name.slice(0, 10)}…` : t.name;
+    const [ix, iy] = polar(i * SEG, R * (many ? 0.74 : 0.66));
+    const [nx, ny] = polar(i * SEG, R * (many ? 0.42 : 0.36));
+    const max = many ? 10 : 11;
+    const short = t.name.length > max ? `${t.name.slice(0, max - 1)}…` : t.name;
     return `<g class="seg${i === selected ? ' sel' : ''}${t.kind === 'miss' ? ' miss' : ''}" data-seg="${i}" ${editable ? `data-action="slot" data-i="${i}"` : ''}>
       <path d="M0 0 L${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z" fill="url(#${id}g${i})" />
       <defs><radialGradient id="${id}g${i}" cx="0" cy="0" r="${R}" gradientUnits="userSpaceOnUse">
@@ -52,7 +54,7 @@ export function wheelSvg(wheel, opts = {}) {
     const [x, y] = polar((i * 360) / BULBS, R + 11);
     return `<circle class="bulb ${i % 2 ? 'odd' : 'even'}" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="3.6" />`;
   }).join('');
-  return `<div class="wheel" style="--size:${size}px" data-wheel="${esc(uid)}">
+  return `<div class="wheel${many ? ' many' : ''}" style="--size:${size}px" data-wheel="${esc(uid)}" data-n="${wheel.length}">
     <svg viewBox="-125 -125 250 250" aria-label="Roue de combat">
       <defs>
         <linearGradient id="${id}rim" x1="0" y1="0" x2="1" y2="1">
@@ -78,7 +80,8 @@ export function wheelSvg(wheel, opts = {}) {
 }
 
 /** Angle final pour que la case `idx` s'arrête sous l'aiguille (avec un léger décalage aléatoire). */
-function targetAngle(current, idx, turns) {
+function targetAngle(current, idx, turns, n) {
+  const SEG = 360 / n;
   const base = -idx * SEG + (Math.random() - 0.5) * SEG * 0.6;
   let target = current + turns * 360;
   target += ((base - target) % 360 + 360) % 360;
@@ -120,7 +123,7 @@ export function animateWheels(root, spins, { onStep, onDone, duration = 1700, ga
       if (idx === undefined || !rot) continue;
       el.querySelectorAll('.seg.win').forEach((g) => g.classList.remove('win'));
       el.classList.add('spinning');
-      const a = targetAngle(angles.get(s.uid) || 0, idx, duration < 1000 ? 2 : 4 + Math.floor(Math.random() * 2));
+      const a = targetAngle(angles.get(s.uid) || 0, idx, duration < 1000 ? 2 : 4 + Math.floor(Math.random() * 2), Number(el.dataset.n) || 8);
       angles.set(s.uid, a);
       rot.style.transition = `transform ${duration}ms cubic-bezier(0.12, 0.72, 0.1, 1)`;
       rot.style.transform = `rotate(${a}deg)`;
@@ -147,7 +150,7 @@ export function settleWheels(root, spins) {
     const el = root.querySelector(`[data-wheel="${CSS.escape(s.uid)}"]`);
     const idx = s.picks[s.picks.length - 1];
     if (!el || idx === undefined) continue;
-    el.querySelector('[data-rot]').style.transform = `rotate(${-idx * SEG}deg)`;
+    el.querySelector('[data-rot]').style.transform = `rotate(${(-idx * 360) / (Number(el.dataset.n) || 8)}deg)`;
     el.querySelector(`.seg[data-seg="${idx}"]`)?.classList.add('win');
   }
 }
