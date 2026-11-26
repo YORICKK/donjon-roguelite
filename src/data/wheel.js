@@ -61,6 +61,8 @@ TILES.t_souffle = { name: 'Souffle du dragon', icon: '🐲', rarity: 'legendaire
 TILES.t_vampire = { name: 'Morsure vampirique', icon: '🦇', rarity: 'rare', tier: 2, kind: 'smite', stat: 'int', base: 3, heal: 2, text: '3 + INT et soigne le groupe de 2' };
 TILES.t_eclipse = { name: 'Éclipse', icon: '🌑', rarity: 'epique', tier: 5, kind: 'guard', base: 6, text: "Bloque l'attaque et soigne le groupe de 6" };
 TILES.t_trou_noir = { name: 'Trou noir', icon: '🌌', rarity: 'legendaire', tier: 5, kind: 'dmg', base: 28, text: '28 dégâts, quelle que soit la classe' };
+TILES.t_raz_maree = { name: 'Raz-de-marée', icon: '🌊', rarity: 'legendaire', tier: 6, kind: 'dmg', base: 34, text: '34 dégâts, quelle que soit la classe' };
+TILES.t_bulle = { name: "Bulle d'air", icon: '🫧', rarity: 'epique', tier: 6, kind: 'guard', base: 8, text: "Bloque l'attaque et soigne le groupe de 8" };
 TILES.t_comete = { name: 'Comète', icon: '☄️', rarity: 'legendaire', tier: 5, kind: 'dmg', stat: 'dex', base: 6, hits: 3, text: '3 coups de 6 + DEX' };
 
 // ---------- Ultis : la compétence de chaque classe est une tuile, reçue dès le niveau 1 du héros ----------

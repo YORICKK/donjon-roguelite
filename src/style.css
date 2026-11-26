@@ -495,3 +495,7 @@ button.google { background: #fff; color: #1f1f1f; border-color: #dadce0; font-we
 @keyframes ultAppear { 0% { transform: scale(0.1) rotate(-200deg); opacity: 0; } 100% { transform: scale(1) rotate(0); opacity: 1; } }
 .spins .ult-spin .wheel { filter: drop-shadow(0 0 16px rgba(255, 106, 0, 0.75)); }
 .spins .ult-spin .wheel-label { color: #ffb070; text-shadow: 0 0 8px rgba(255, 106, 0, 0.8); }
+
+/* Mode infini : bouton principal du menu */
+.endless-btn { line-height: 1.25; padding-top: 0.6em; padding-bottom: 0.6em; }
+.endless-btn .small { display: inline-block; font-weight: 400; opacity: 0.85; }

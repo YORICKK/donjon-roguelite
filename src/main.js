@@ -3,7 +3,7 @@ import { MAX_EQUIPPED } from './data/items.js';
 import { heroLevel } from './data/heroes.js';
 import { WHEEL_SIZE, TILES, ownedTiles, autoWheel, classStarterWheel } from './data/wheel.js';
 import { animateWheels, settleWheels, spinsDuration, ultTiming } from './ui/wheel.js';
-import { LEVELS, getLevel } from './data/levels.js';
+import { LEVELS, getLevel, isEndless, ENDLESS_BASE, ENDLESS_START } from './data/levels.js';
 import { Rng, randomSeed } from './core/rng.js';
 import {
   createGame, generateDungeon, getChoices, tallyVotes, votersFor, resolveChoice, advance, finishLevelUp, keptLoot,
@@ -216,7 +216,7 @@ function syncScene() {
   const L = app.lobby;
   if (L?.status === 'playing' && L.game) {
     const g = L.game;
-    const key = `${L.seed}|${g.rooms.length}`;
+    const key = `${L.seed}|${g.levelId}|${g.rooms.length}`;
     if (app.builtSeed !== key) {
       const sameRun = app.builtSeed?.startsWith(`${L.seed}|`);
       scene.build(g.rooms, getLevel(g.levelId));
@@ -291,7 +291,7 @@ function normalize(L) {
   return L;
 }
 
-async function enterLobby(api, code, create) {
+async function enterLobby(api, code, create, levelId = null) {
   app.api = api;
   app.code = code;
   app.waLink = `https://wa.me/?text=${encodeURIComponent(inviteText())}`;
@@ -303,7 +303,7 @@ async function enterLobby(api, code, create) {
   const player = { name: app.name, joinedAt: Date.now(), online: true, classId: null, ready: false, equipped: [] };
   if (create) {
     await api.create(code, {
-      hostUid: app.uid, status: 'lobby', levelId: Math.min(app.profile.unlockedLevel || 1, LEVELS.length), seed: randomSeed(),
+      hostUid: app.uid, status: 'lobby', levelId: levelId || Math.min(app.profile.unlockedLevel || 1, LEVELS.length), seed: randomSeed(),
       players: { [app.uid]: player },
     });
   } else {
@@ -394,7 +394,10 @@ async function maybeSaveRun() {
   for (const id of keptLoot(g)) inv[id] = (inv[id] || 0) + 1;
   app.profile.inventory = inv;
   app.profile.runs = (app.profile.runs || 0) + 1;
-  if (g.outcome === 'victory') {
+  if (isEndless(g.levelId)) {
+    // Mode infini : record = étage le plus profond atteint
+    app.profile.bestDepth = Math.max(app.profile.bestDepth || 0, g.levelId - ENDLESS_BASE);
+  } else if (g.outcome === 'victory') {
     app.profile.wins = (app.profile.wins || 0) + 1;
     app.profile.unlockedLevel = Math.min(LEVELS.length, Math.max(app.profile.unlockedLevel || 1, g.levelId + 1));
   }
@@ -423,6 +426,10 @@ const actions = {
   async solo() {
     app.solo = true;
     await enterLobby(soloLobbies, `SOLO-${app.uid}`, true);
+  },
+  async endless() {
+    app.solo = true;
+    await enterLobby(soloLobbies, `SOLO-${app.uid}`, true, ENDLESS_START);
   },
   async create() {
     let code = makeCode();

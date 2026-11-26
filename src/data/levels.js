@@ -41,10 +41,37 @@ export const LEVELS = [
     boss: 'vorath', bosses: ['vorath', 'colosse_astral'],
     lootTable: { commun: 0, rare: 15, epique: 45, legendaire: 40 },
   },
+  {
+    id: 6, name: 'Les Abysses engloutis', theme: 'abyss', rooms: 8, dcBonus: 7, enemyScale: 3,
+    palette: { floor: 0x1a3a3c, wall: 0x1f4a50, fog: 0x01080c, torch: 0x40e0d0 },
+    weights: { combat: 5, trap: 2, chest: 2, shrine: 1, npc: 1, rest: 1 },
+    enemies: ['noye', 'homme_poisson', 'crabe_abyssal', 'meduse'],
+    boss: 'kraken', bosses: ['kraken', 'thalassa'],
+    lootTable: { commun: 0, rare: 10, epique: 40, legendaire: 50 },
+  },
 ];
 
 // Carte : `rooms` étages avant le boss, 2 à 3 portes par étage. Les poids `weights` décident
 // du type de chaque porte ; élite, marchand et inconnu sont ajoutés à partir du 2e étage.
 export const MAP_EXTRA_WEIGHTS = { elite: 1, shop: 1, unknown: 1.5 };
 
-export const getLevel = (id) => LEVELS.find((l) => l.id === id) || LEVELS[0];
+// ---------- Mode infini ----------
+// Étages sans fin : l'étage N reprend le biome du niveau ((N-1) mod 6) + 1, avec une difficulté qui
+// monte à chaque étage (l'étage 6 vaut le niveau 6, puis ça continue). Après chaque boss, un escalier :
+// descendre plus bas, ou remonter avec tout le butin. Les étages sont codés levelId = ENDLESS_BASE + N.
+export const ENDLESS_BASE = 100;
+export const ENDLESS_START = ENDLESS_BASE + 1;
+export const isEndless = (id) => id > ENDLESS_BASE;
+export function endlessLevel(depth) {
+  const base = LEVELS[(depth - 1) % LEVELS.length];
+  return {
+    ...base,
+    id: ENDLESS_BASE + depth, depth, endless: true, rank: depth,
+    name: `Mode infini — étage ${depth}`, biome: base.name,
+    rooms: 4,
+    dcBonus: Math.min(12, Math.round((depth - 1) * 1.4)),
+    enemyScale: Math.round((1 + 0.4 * (depth - 1)) * 100) / 100,
+  };
+}
+
+export const getLevel = (id) => (isEndless(id) ? endlessLevel(id - ENDLESS_BASE) : LEVELS.find((l) => l.id === id) || LEVELS[0]);

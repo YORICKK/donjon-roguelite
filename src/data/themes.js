@@ -65,6 +65,17 @@ THEMES.astral = {
   fog: [6, 32],
 };
 
+// Niveau 6 : ruines englouties, coraux, algues et bénitiers géants, bulles qui remontent.
+THEMES.abyss = {
+  walls: ['sanctum_wall_0', 'sanctum_wall_1', 'mine_wall_0'],
+  floors: ['mine_floor_0', 'mine_floor_1', 'sanctum_floor_0'],
+  pillar: 'obelisk',
+  alongWalls: ['coral', 'giant_clam', 'kelp', 'statue', 'coral'],
+  corners: ['kelp', 'coral', 'rubble', 'kelp', 'urn'],
+  particles: { color: 0xa0f0ff, count: 200, size: 0.06, speed: 0.04, rise: 0.35, additive: true },
+  fog: [4, 24],
+};
+
 /** Décor ajouté selon le type de salle, quel que soit le biome. */
 export const ROOM_DRESSING = {
   rest: ['bedroll', 'bedroll', 'table_set'],

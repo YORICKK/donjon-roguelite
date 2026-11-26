@@ -109,6 +109,8 @@ export function generateMap(seed, levelId) {
     floors.push(nodes);
   }
   floors.push([{ id: `${level.rooms}-0`, floor: level.rooms, type: 'boss', room: makeRoom(rng, 'boss', level), next: [] }]);
+  // Mode infini : un escalier après le boss
+  if (level.endless) floors.push([{ id: `${level.rooms + 1}-0`, floor: level.rooms + 1, type: 'stairs', room: makeRoom(rng, 'stairs', level), next: [] }]);
   // Liaisons : chaque porte mène à 1 ou 2 portes de l'étage suivant ; toutes sont atteignables.
   for (let f = 0; f < floors.length - 1; f++) {
     const cur = floors[f];
@@ -196,7 +198,7 @@ function enterRoom(game, seed) {
     game.enemy = { id: room.enemyId, hp, maxHp: hp, elite, rage: 0, phase: 1, intent: 'attack' };
     rollIntent(game, rng);
     for (const uid of petOwners(game, 'breath')) {
-      const dmg = Math.min(game.enemy.hp - 1, rng.dice(2, 6) + 2 * level.id);
+      const dmg = Math.min(game.enemy.hp - 1, rng.dice(2, 6) + 2 * (level.rank || level.id));
       if (dmg <= 0) continue;
       game.enemy.hp -= dmg;
       game.intro.push(`🐉 Le dragonnet crache des flammes sur ${e.name} : −${dmg} PV !`);
@@ -255,6 +257,13 @@ export function getChoices(game, players) {
     });
   }
   const room = game.rooms[game.roomIndex];
+  if (room.type === 'stairs') {
+    const depth = getLevel(game.levelId).depth;
+    return [
+      { id: 'descend', stairs: true, label: `⬇️ Descendre à l'étage ${depth + 1}`, desc: `Plus dur, meilleur butin. Le groupe récupère 30 % de ses PV, les morts reviennent.` },
+      { id: 'retreat', stairs: true, label: '🏃 Remonter avec tout le butin', safe: true, desc: 'Fin du run : chacun garde tous les objets trouvés.' },
+    ];
+  }
   const choices = [];
   let fleeChoice = null;
   if (room.type === 'shop') {
@@ -457,7 +466,7 @@ export function rollLoot(rng, levelId, boost = 0, tile = rng.chance(TILE_LOOT_CH
   const order = Object.keys(RARITY);
   if (boost) rarity = order[Math.min(order.length - 1, order.indexOf(rarity) + boost)];
   for (let r = order.indexOf(rarity); r >= 0; r--) {
-    const pool = Object.keys(ITEMS).filter((id) => !ITEMS[id].companion && !!ITEMS[id].tile === tile && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
+    const pool = Object.keys(ITEMS).filter((id) => !ITEMS[id].companion && !!ITEMS[id].tile === tile && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= (level.rank || level.id));
     if (pool.length) return rng.pick(pool);
   }
   return tile ? 't_epee' : 'dague_rouillee';
@@ -470,7 +479,7 @@ export function rollCompanion(rng, levelId, boost = 0) {
   let rarity = rng.weighted(level.lootTable);
   if (boost) rarity = order[Math.min(order.length - 1, order.indexOf(rarity) + boost)];
   for (let r = order.indexOf(rarity); r >= 0; r--) {
-    const pool = Object.keys(ITEMS).filter((id) => ITEMS[id].companion && !ITEMS[id].shiny && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= level.id);
+    const pool = Object.keys(ITEMS).filter((id) => ITEMS[id].companion && !ITEMS[id].shiny && ITEMS[id].rarity === order[r] && ITEMS[id].tier <= (level.rank || level.id));
     // 1 fois sur 10 : la variante chromatique
     if (pool.length) { const id = rng.pick(pool); return rng.chance(SHINY_CHANCE) && ITEMS[`${id}_shiny`] ? `${id}_shiny` : id; }
   }
@@ -737,6 +746,7 @@ function endOfTurn(game, players, lines) {
 export function resolveChoice(gameIn, players, choiceId, seed) {
   const game = structuredClone(gameIn);
   if (game.phase === 'path') return enterNode(game, choiceId.slice(3), seed);
+  if (game.rooms[game.roomIndex]?.type === 'stairs') return takeStairs(game, choiceId, seed);
 
   const rng = new Rng(`${seed}|${game.roomIndex}|${game.round}|${choiceId}`);
   const level = getLevel(game.levelId);
@@ -862,14 +872,14 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   if (game.enemy && !game.enemy.fled && game.enemy.hp > 0 && fight) {
     for (const uid of petOwners(game, 'bite')) {
       if (!rng.chance(1 / 3)) continue;
-      const dmg = rng.int(2, 5) + level.id;
+      const dmg = rng.int(2, 5) + (level.rank || level.id);
       game.enemy.hp -= dmg;
       lines.push(`🐺 Le loup de ${players[uid].name} mord ${ENEMIES[game.enemy.id].name} (−${dmg} PV) !`);
       (game._pets ||= []).push({ uid, kind: 'bite' });
     }
     for (const uid of petOwners(game, 'phoenix')) {
       lines.push(`🦅 Le phénix de ${players[uid].name} répand des flammes guérisseuses.`);
-      healAll(game, 2 + Math.floor(level.id / 2), players, lines);
+      healAll(game, 2 + Math.floor((level.rank || level.id) / 2), players, lines);
       (game._pets ||= []).push({ uid, kind: 'phoenix' });
     }
   }
@@ -923,7 +933,38 @@ export function resolveChoice(gameIn, players, choiceId, seed) {
   game.phase = 'result';
   game.votes = {};
   if (!anyAlive) game.outcome = 'defeat';
-  else if (roomDone && room.type === 'boss') game.outcome = 'victory';
+  else if (roomDone && room.type === 'boss' && !level.endless) game.outcome = 'victory';
+  else if (roomDone && room.type === 'boss') game.banked = Object.values(game.loot || {}).length; // butin de l'étage assuré
+  return game;
+}
+
+/** Mode infini : l'escalier. Descendre = nouvel étage (carte neuve, PV en partie rendus) ; remonter = fin du run, tout le butin. */
+function takeStairs(game, choiceId, seed) {
+  const depth = getLevel(game.levelId).depth;
+  if (choiceId === 'retreat') {
+    game.outcome = 'victory';
+    game.lastResult = { label: '🏃 Remonter', lines: [`Le groupe remonte à la surface depuis l'étage ${depth}, les bras chargés de butin.`], roomDone: true, choiceId };
+    game.phase = 'result';
+    game.votes = {};
+    return game;
+  }
+  game.levelId += 1;
+  game.map = generateMap(`${seed}|${game.levelId}`, game.levelId);
+  game.nodeId = null;
+  game.rooms = [{ type: 'entrance', shape: { w: 10, d: 9, pillars: 2, torches: 2 } }];
+  game.roomIndex = 0;
+  game.enemy = null;
+  game.round = 0;
+  game.revealed = false;
+  game.flags = {};
+  for (const m of Object.values(game.party)) {
+    const gain = Math.ceil(m.maxHp * 0.3);
+    if (!m.alive) { m.alive = true; m.hp = gain; m.poison = 0; } else m.hp = Math.min(m.maxHp, m.hp + gain);
+  }
+  game.phase = 'path';
+  game.votes = {};
+  game.lastResult = null;
+  game.deadline = Date.now() + VOTE_SECONDS * 1000;
   return game;
 }
 
@@ -999,11 +1040,16 @@ export function finishLevelUp(gameIn, seed = '') {
   return game;
 }
 
-/** Objets conservés en fin de run : tout en cas de victoire, seulement le plus rare en cas de défaite. */
+/**
+ * Objets conservés en fin de run : tout en cas de victoire, seulement le plus rare en cas de défaite.
+ * Mode infini : le butin des étages terminés (boss vaincu) est assuré, plus le plus rare de l'étage en cours.
+ */
 export function keptLoot(game) {
   const loot = Object.values(game.loot || {});
   if (game.outcome === 'victory') return [...loot];
-  if (!loot.length) return [];
-  const best = [...loot].sort((a, b) => RARITY[ITEMS[b].rarity].rank - RARITY[ITEMS[a].rarity].rank)[0];
-  return [best];
+  const safe = loot.slice(0, game.banked || 0);
+  const rest = loot.slice(game.banked || 0);
+  if (!rest.length) return safe;
+  const best = [...rest].sort((a, b) => RARITY[ITEMS[b].rarity].rank - RARITY[ITEMS[a].rarity].rank)[0];
+  return [...safe, best];
 }

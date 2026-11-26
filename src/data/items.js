@@ -26,6 +26,9 @@ export const ITEMS = {
   // Niveau 5
   couronne_neant: { name: 'Couronne du Néant', icon: '👑', rarity: 'legendaire', tier: 5, bonus: { int: 2, sag: 2, hp: 6, dmg: 2 } },
   lame_astrale: { name: 'Lame astrale', icon: '🌠', rarity: 'legendaire', tier: 5, bonus: { for: 2, dex: 2, dmg: 3 } },
+  // Niveau 6
+  trident_abysses: { name: 'Trident des abysses', icon: '🔱', rarity: 'legendaire', tier: 6, bonus: { for: 2, sag: 2, dmg: 4 } },
+  perle_noire: { name: 'Perle noire', icon: '🦪', rarity: 'epique', tier: 6, bonus: { int: 2, hp: 6 } },
   talisman_os: { name: "Talisman d'os", icon: '📿', rarity: 'epique', tier: 3, bonus: { int: 1, sag: 1, hp: 3 } },
 
   // ---------- Compagnons : conservés comme des objets, un seul par joueur au début d'un run ----------

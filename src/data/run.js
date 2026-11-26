@@ -14,6 +14,7 @@ export const NODE_TYPES = {
   shop: { icon: '🛒', label: 'Marchand' },
   unknown: { icon: '❓', label: 'Inconnu' },
   boss: { icon: '👹', label: 'Boss' },
+  stairs: { icon: '🪜', label: 'Escalier', desc: 'Descendre plus bas… ou remonter avec le butin' },
 };
 
 /** Modificateurs des ennemis d'élite. */

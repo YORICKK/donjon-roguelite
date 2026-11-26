@@ -46,7 +46,7 @@ function effectValue(e = {}, g) {
   return v;
 }
 
-function chooseVote(g, players, choices) {
+export function chooseVote(g, players, choices) {
   const allowed = choices.filter((c) => !c.disabled);
   const room = g.rooms[g.roomIndex];
   const hp = hpRatio(g);
@@ -101,7 +101,7 @@ function chooseVote(g, players, choices) {
   return best;
 }
 
-function pickBoon(classId, offer) {
+export function pickBoon(classId, offer) {
   const prio = [MAIN_STAT[classId] === 'for' ? 'force' : MAIN_STAT[classId] === 'int' ? 'intellect' : MAIN_STAT[classId] === 'dex' ? 'agilite' : 'sagesse',
     'vigueur', 'chance', 'tranchant', 'second_souffle', 'force', 'agilite', 'intellect', 'sagesse'];
   return prio.find((b) => offer.includes(b)) || offer[0];
@@ -126,7 +126,7 @@ export function playRun(seed, levelId, players) {
 
 // ---------- Équipement ----------
 /** Les 2 meilleurs objets possédés pour une classe (stat principale, PV, dégâts). */
-function bestGear(classId, owned) {
+export function bestGear(classId, owned) {
   const st = MAIN_STAT[classId];
   const score = (id) => {
     const b = ITEMS[id].bonus || {};
@@ -137,7 +137,7 @@ function bestGear(classId, owned) {
 export const bestWheel = (classId, inventory) => autoWheel(classId, inventory, CLASSES[classId].stats);
 
 const PET_RANK = { pet_phenix: 7, pet_dragon: 6, pet_golem: 5, pet_ours: 4, pet_chat: 3.5, pet_loup: 3, pet_chien: 2, pet_ecureuil: 1 };
-function bestPet(owned) {
+export function bestPet(owned) {
   const pets = owned.filter((id) => ITEMS[id].companion).map((id) => ITEMS[id].variantOf || id);
   return pets.sort((a, b) => (PET_RANK[b] || 0) - (PET_RANK[a] || 0))[0] || null;
 }

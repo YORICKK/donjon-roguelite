@@ -99,7 +99,7 @@ export function createDungeonScene(canvas) {
     });
   }
 
-  // Résolution adaptative : on baisse la définition si l'image passe sous ~45 i/s, on remonte si c'est fluide.
+  // Résolution adaptative (rendu limité à 30 i/s) : on baisse la définition si l'image passe sous ~22 i/s, on remonte si c'est fluide.
   const maxRatio = Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2);
   // Plancher à ×1 : un écran bridé à 30 i/s (mode économie) ne doit pas devenir flou.
   const minRatio = Math.min(maxRatio, 1);
@@ -111,8 +111,8 @@ export function createDungeonScene(canvas) {
     fps = frames / acc;
     frames = 0; acc = 0;
     if (document.hidden) return;
-    if (fps < 40 && ratio > minRatio) { ratio = Math.max(minRatio, ratio - 0.25); goodWindows = 0; renderer.setPixelRatio(ratio); resize(); }
-    else if (fps > 57) {
+    if (fps < 22 && ratio > minRatio) { ratio = Math.max(minRatio, ratio - 0.25); goodWindows = 0; renderer.setPixelRatio(ratio); resize(); }
+    else if (fps > 27) {
       goodWindows++;
       if (goodWindows >= 3 && ratio < maxRatio) { ratio = Math.min(maxRatio, ratio + 0.25); goodWindows = 0; renderer.setPixelRatio(ratio); resize(); }
     } else goodWindows = 0;
@@ -742,8 +742,13 @@ export function createDungeonScene(canvas) {
   function shakeHit(amount = 0.35) { shake = Math.max(shake, amount); }
   let shake = 0;
 
-  function tick() {
+  // Limite à 30 images/s : moins de calcul et de batterie, rendu identique à l'œil pour ce jeu.
+  const FRAME_MS = 1000 / 30;
+  let lastFrame = 0;
+  function tick(now = performance.now()) {
     if (!running) return;
+    if (now - lastFrame < FRAME_MS - 2) { requestAnimationFrame(tick); return; }
+    lastFrame = now;
     const raw = clock.getDelta();
     const dt = Math.min(raw, 0.05);
     const t = clock.elapsedTime;

@@ -311,3 +311,31 @@ test('jackpot : un lancer de plus et un multiplicateur qui double à chaque jack
     if (j) assert.ok(r.lines.some((l) => l.includes(`×${2 ** j}`)), `multiplicateur ×${2 ** j}`);
   }
 });
+
+test('mode infini : escalier après le boss, descente, butin des étages assuré', async () => {
+  const { ENDLESS_START, getLevel } = await import('../src/data/levels.js');
+  const map = generateMap('inf', ENDLESS_START);
+  const last = map.floors[map.floors.length - 1][0];
+  const boss = map.floors[map.floors.length - 2][0];
+  assert.equal(last.type, 'stairs');
+  assert.deepEqual(boss.next, [last.id]);
+  assert.ok(getLevel(ENDLESS_START + 5).enemyScale > getLevel(ENDLESS_START).enemyScale, 'plus dur en descendant');
+  // On se place directement dans la salle de l'escalier
+  let g = createGame('inf', ENDLESS_START, players);
+  g = resolveChoice({ ...g, nodeId: boss.id }, players, `go:${last.id}`, 'inf');
+  assert.deepEqual(getChoices(g, players).map((c) => c.id), ['descend', 'retreat']);
+  g.loot = ['dague_rouillee', 'epee_runique'];
+  g.banked = 2;
+  g.party.b.alive = false;
+  const down = resolveChoice(g, players, 'descend', 'inf');
+  assert.equal(down.levelId, ENDLESS_START + 1);
+  assert.equal(down.phase, 'path');
+  assert.equal(down.rooms.length, 1);
+  assert.ok(down.party.b.alive, 'les morts reviennent à l’étage suivant');
+  // Défaite plus bas : le butin des étages finis est gardé + le plus rare de l'étage en cours
+  const lost = { ...down, loot: [...down.loot, 'bottes_cuir', 'cape_ombre'], outcome: 'defeat' };
+  assert.deepEqual(keptLoot(lost), ['dague_rouillee', 'epee_runique', 'cape_ombre']);
+  const out = advance(resolveChoice(g, players, 'retreat', 'inf'), 'inf');
+  assert.equal(out.outcome, 'victory');
+  assert.equal(out.phase, 'over');
+});

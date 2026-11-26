@@ -3,7 +3,7 @@ import { CLASSES, STAT_LABELS } from '../data/classes.js';
 import { ITEMS, RARITY, MAX_EQUIPPED, describeBonus, isGear } from '../data/items.js';
 import { TILES, WHEEL_SIZE, ULT_WHEELS, TILE_GROUPS, ownedTiles, sanitizeWheel, tileColor, tileGroup, tileValue } from '../data/wheel.js';
 import { wheelSvg } from './wheel.js';
-import { LEVELS, getLevel } from '../data/levels.js';
+import { LEVELS, getLevel, isEndless, ENDLESS_START } from '../data/levels.js';
 import { ENEMIES, ROOM_TYPE_LABELS, INTENTS } from '../data/events.js';
 import { NODE_TYPES, CONSUMABLES, BOONS, XP_LEVELS, STATUS, ELITE } from '../data/run.js';
 import { HERO_MAX, heroProgress, perkLabel } from '../data/heroes.js';
@@ -93,7 +93,8 @@ export function renderMenu(app) {
     ${strip()}
     <h1>Donjon<br>Roguelite</h1>
     <p>Bienvenue, <b>${esc(app.name)}</b><br><span class="muted small">${app.profile.runs || 0} runs · ${app.profile.wins || 0} victoires · niveau ${app.profile.unlockedLevel || 1} débloqué</span></p>
-    <button class="primary" data-action="solo">⚔️ Jouer en solo</button>
+    <button class="primary endless-btn" data-action="endless">♾️ Mode infini<br><span class="small">Des étages sans fin${app.profile.bestDepth ? ` · record : étage ${app.profile.bestDepth}` : ''}</span></button>
+    <button data-action="solo">⚔️ Campagne solo</button>
     <button data-action="create">👥 Créer un salon</button>
     <form data-form="join" class="row">
       <input name="code" maxlength="5" placeholder="CODE" autocapitalize="characters" autocomplete="off" enterkeyhint="go" style="text-transform:uppercase;letter-spacing:0.2em;text-align:center" required />
@@ -174,10 +175,13 @@ export function renderLobby(app, L) {
         <div>
           <h3>Donjon</h3>
           ${isHost ? `<select data-change="level" aria-label="Niveau">
+            <option value="${ENDLESS_START}" ${isEndless(L.levelId) ? 'selected' : ''}>♾️ Mode infini</option>
             ${LEVELS.map((l) => `<option value="${l.id}" ${l.id === L.levelId ? 'selected' : ''} ${l.id > maxLevel ? 'disabled' : ''}>
               ${l.id > maxLevel ? '🔒' : '🏰'} ${l.id}. ${esc(l.name)}</option>`).join('')}
-          </select>` : `<p><b>${level.id}. ${esc(level.name)}</b></p>`}
-          <p class="muted small">${level.rooms} salles + boss · DD +${level.dcBonus} · ennemis ×${level.enemyScale}</p>
+          </select>` : `<p><b>${level.endless ? '♾️ Mode infini' : `${level.id}. ${esc(level.name)}`}</b></p>`}
+          <p class="muted small">${level.endless
+            ? `Étages de ${level.rooms} salles + boss, de plus en plus durs. Après chaque boss : descendre, ou remonter avec tout le butin. Le butin des étages finis est assuré.${app.profile.bestDepth ? ` Record : étage ${app.profile.bestDepth}.` : ''}`
+            : `${level.rooms} salles + boss · DD +${level.dcBonus} · ennemis ×${level.enemyScale}`}</p>
           ${L.lastOutcome ? `<p class="small">Dernier run : ${L.lastOutcome === 'victory' ? '🏆 Victoire' : '☠️ Défaite'}</p>` : ''}
         </div>
       </section>
@@ -296,7 +300,7 @@ export function renderGame(app, L) {
   if (g.phase === 'over') body = renderOver(app, L);
   else if (g.phase === 'path') {
     body = `
-      <div class="kicker"><span class="ico">🧭</span> Étage ${floorNow + 1}/${floors}</div>
+      <div class="kicker"><span class="ico">🧭</span> ${level.endless ? `Étage ${level.depth} · salle` : "Étage"} ${floorNow + 1}/${floors}</div>
       <h2>${floorNow === 0 ? 'L’entrée du donjon' : 'Le couloir se divise'}</h2>
       ${renderMap(g)}
       <p class="story">${floorNow === 0 ? 'Deux passages s’enfoncent dans l’obscurité. Par où commencer ?' : 'Plusieurs portes s’offrent à vous. Chaque choix ferme les autres chemins.'}</p>
@@ -307,14 +311,17 @@ export function renderGame(app, L) {
     const room = g.rooms[g.roomIndex];
     const enemy = g.enemy ? ENEMIES[g.enemy.id] : null;
     const shop = room.type === 'shop';
-    const ev = getEvent(room);
+    const stairs = room.type === 'stairs';
+    const ev = stairs
+      ? { title: `L'escalier vers l'étage ${level.depth + 1}`, text: 'Le gardien est tombé. Un escalier s’enfonce encore plus bas, dans une obscurité plus froide. Le butin pèse lourd dans vos sacs…' }
+      : getEvent(room);
     const title = shop ? 'Le marchand ambulant' : enemy ? `${enemy.name}${g.enemy.elite ? ' <span class="chip bad">ÉLITE</span>' : ''}${g.enemy.phase === 2 ? ' <span class="chip bad">FURIEUX</span>' : ''}` : esc(ev.title);
     const text = shop ? '« Des potions, des bombes, des babioles… Tout a un prix, mais tout peut sauver une vie. »'
       : enemy ? (enemy.boss ? (g.round ? 'Le gardien vacille… ou pas.' : 'Le gardien du donjon se dresse devant vous. Aucune fuite possible.') : g.round ? 'Le combat continue !' : `Un ${enemy.name.toLowerCase()}${g.enemy.elite ? ' d’élite' : ''} vous barre la route.`)
       : ev.text;
     const icon = room.hidden ? '❓' : NODE_TYPES[room.type]?.icon || ROOM_ICONS[room.type];
     body = `
-      <div class="kicker"><span class="ico">${icon}</span> Étage ${floorNow}/${floors} · ${room.hidden ? 'Inconnu → ' : ''}${ROOM_TYPE_LABELS[room.type] || NODE_TYPES[room.type]?.label}</div>
+      <div class="kicker"><span class="ico">${icon}</span> ${level.endless ? `Étage ${level.depth} · salle` : "Étage"} ${floorNow}/${floors} · ${room.hidden ? 'Inconnu → ' : ''}${ROOM_TYPE_LABELS[room.type] || NODE_TYPES[room.type]?.label}</div>
       <h2>${title}</h2>
       ${enemy ? `<div class="hp enemy"><div style="width:${(100 * shownHp) / g.enemy.maxHp}%"></div></div>
         <div class="enemy-line"><span>❤️ ${shownHp}/${g.enemy.maxHp}</span>${g.enemy.rage ? `<span>😡 +${g.enemy.rage}</span>` : ''}</div>
@@ -330,7 +337,7 @@ export function renderGame(app, L) {
       <div class="party">${partyHtml}</div>
       <div class="status">
         <div class="panel levelbox">
-          <div class="lv">${esc(level.name)}</div>
+          <div class="lv">${esc(level.name)}${level.endless ? ` <span class="muted small">(${esc(level.biome)})</span>` : ''}</div>
           <div class="runstats"><span title="Or du groupe">💰 ${g.gold || 0}</span><span title="Niveau du groupe">⭐ ${g.plevel}</span>${g.cursed ? '<span title="Maudits : −1 à tous les jets">💀</span>' : ''}${g.flags?.allie ? '<span title="Un allié vous attend au boss">🤝</span>' : ''}${g.flags?.faveur ? '<span title="Faveur de la déesse">🌟</span>' : ''}${g.revealed ? '<span title="Carte révélée">🗺️</span>' : ''}${bag ? `<span class="bag" title="Sac du groupe">${bag}</span>` : ''}</div>
           <div class="xp" title="Expérience : ${g.xp || 0}${nextXp ? ` / ${nextXp}` : ''}"><div style="width:${xpPct}%"></div></div>
           <div class="loot">🎒 ${(g.loot || []).map((id) => ITEMS[id].icon).join(' ') || 'aucun butin'}</div>
@@ -388,7 +395,7 @@ function renderVote(app, L) {
         else if (c.price !== undefined) meta = `${priceChip}<span>${esc(c.desc || '')}</span>`;
         else if (c.skill) meta = `<span class="chip gold">Compétence</span><span>${esc(c.desc || '')}</span>`;
         else if (c.item) meta = `<span class="chip gold">Objet</span><span>${esc(c.desc || '')}</span>`;
-        else if (c.path) meta = `<span>${esc(c.desc || '')}</span>`;
+        else if (c.path || c.stairs) meta = `<span>${esc(c.desc || '')}</span>`;
         else meta = '<span class="chip">Sans risque</span>';
         // détail complet au survol / appui long (le bouton n'en montre qu'un résumé)
         const tip = [c.label, pv ? `${players[pv.uid]?.name || ''} tente : ${STAT_LABELS[c.stat]} ${fmtMod(pv.mod)} contre DD ${pv.dc} (${pct} %)` : '', c.desc || ''].filter(Boolean).join(' — ');
@@ -437,6 +444,22 @@ function renderOver(app, L) {
   const r = g.lastResult;
   const players = L.players || {};
   const win = g.outcome === 'victory';
+  const lvl = getLevel(g.levelId);
+  if (lvl.endless) {
+    return `
+    <h2 class="over-title">${win ? '🏃 Retour à la surface !' : '☠️ Le groupe a péri'}</h2>
+    <p class="result-ok">♾️ Étage ${lvl.depth} atteint${app.profile.bestDepth ? ` · record : étage ${app.profile.bestDepth}` : ''}</p>
+    <div class="over-portraits">${Object.keys(g.party || {}).map((u) => portrait(players[u]?.classId)).join('')}</div>
+    ${r ? `<ul class="lines">${r.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : ''}
+    <p class="muted">${win ? 'Chacun rapporte tout le butin.' : 'Le butin des étages terminés est sauvé, plus l’objet le plus précieux de l’étage en cours.'}</p>
+    <h3>Objets conservés ${inParty ? '' : '(spectateur)'}</h3>
+    <div class="items">${kept.length ? kept.map((id) => itemChip(id)).join('') : '<span class="muted">Aucun.</span>'}</div>
+    ${app.heroGain && inParty && app.heroGain.runKey === `${app.code}|${L.seed}` ? heroGainLine(app.heroGain) : ''}
+    <div class="action-bar">
+      ${isHost ? '<button class="primary grow" data-action="relobby">Nouveau run</button>' : ''}
+      <button data-action="leave">Menu</button>
+    </div>`;
+  }
   return `
     <h2 class="over-title">${win ? '🏆 Victoire !' : '☠️ Le groupe a péri'}</h2>
     <div class="over-portraits">${Object.keys(g.party || {}).map((u) => portrait(players[u]?.classId)).join('')}</div>
@@ -515,6 +538,11 @@ function wheelEditor(app, me) {
           <button class="ghost small" data-action="resetWheel" ${locked}>↺ Roue de départ</button>
         </div>
       </div>
+    </div>
+    <div class="action-bar sticky">
+      <button data-action="prevStep" ${locked}>◀ Classe</button>
+      <button class="primary grow" data-action="nextStep">Suivant : équipement ▶</button>
+      <button class="ghost" data-action="leave">Quitter</button>
     </div>`;
 }
 

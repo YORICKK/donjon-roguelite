@@ -24,6 +24,15 @@ npm test
 
 ## Règles du prototype
 
+**♾️ Mode infini** (mode principal, bouton en tête du menu, ou « Mode infini » dans la liste des donjons d'un salon) :
+des étages sans fin de 4 salles + boss. L'étage N reprend le biome, les ennemis et les boss du niveau ((N−1) mod 6) + 1,
+avec une difficulté qui monte à chaque étage (ennemis ×(1 + 0,4 × (N−1)), DD +1,4 par étage, plafonné à +12) : l'étage 6
+vaut le niveau 6 de la campagne, puis ça continue. Après chaque boss, un escalier : **descendre** (le groupe récupère
+30 % de ses PV, les morts reviennent) ou **remonter** avec tout le butin. En cas de mort, le butin des étages terminés
+est assuré, plus l'objet le plus rare de l'étage en cours. Le record d'étage est gardé dans le profil (`bestDepth`).
+Côté code : `endlessLevel()` dans `src/data/levels.js` (étages codés `levelId = 100 + N`), salle `stairs` et
+`takeStairs()` dans `src/core/engine.js`.
+
 | Classe | FOR | DEX | INT | SAG | PV | Dégâts | Compétence (1×/run) |
 |---|---|---|---|---|---|---|---|
 | ⚔️ Guerrier | +3 | +1 | −1 | 0 | 16 | d8 | Coup puissant : réussite auto, dégâts ×2 |
@@ -44,7 +53,7 @@ npm test
 - **Fils rouges** : des choix ont des conséquences plus tard dans le run : un prisonnier libéré ou un apprenti épargné surgit contre le boss (−20 % PV), une offrande à la déesse soigne le groupe à l'arrivée chez le boss, une carte ou une vision révèle les portes « inconnues ». Un même run ne propose pas deux fois le même événement.
 - **Or et sac** : l'or (gagné en combat, coffres, fouilles) s'achète chez le marchand : potions de soin, bombes, eau bénite, parchemins de fuite, et un objet permanent. Les consommables se votent comme une action. L'or est perdu à la fin du run.
 - **Niveaux du groupe** : l'XP (combats, réussites) fait monter le groupe de niveau ; chaque joueur choisit alors un bonus parmi 3 (stat, PV, dégâts, chance, compétence rechargée), valable jusqu'à la fin du run.
-- **Boss** : chaque niveau tire son gardien parmi `bosses` (`src/data/levels.js`) : Chef gobelin ou Reine des rats, Golem ou Grok le Roi ogre, la Liche ou le Chevalier de la mort, Ignar le Dragon-Roi, puis Vorath le Dévoreur d'étoiles ou le Colosse astral. Certains ennemis **drainent la vie** (intention 🦇 : ils se soignent de la moitié des dégâts infligés).
+- **Boss** : chaque niveau tire son gardien parmi `bosses` (`src/data/levels.js`) : Chef gobelin ou Reine des rats, Golem ou Grok le Roi ogre, la Liche ou le Chevalier de la mort, Ignar le Dragon-Roi, Vorath le Dévoreur d'étoiles ou le Colosse astral, puis le Kraken des profondeurs ou Thalassa, Reine des sirènes. Certains ennemis **drainent la vie** (intention 🦇 : ils se soignent de la moitié des dégâts infligés).
 - **Niveaux de héros (permanents)** : en fin de run, victoire ou défaite, l'XP du run s'ajoute à la classe jouée (`profile.heroXp`). 10 niveaux (`src/data/heroes.js`) : +2 PV max aux niveaux pairs, +1 stat principale aux niveaux 3 et 7, +1 dégâts aux niveaux 5 et 9, +1 à tous les jets au niveau 10.
 - **Mort permanente** : un personnage à 0 PV reste mort jusqu'à la fin du run (il regarde). Groupe entier mort = défaite.
 - **Butin** : victoire = chaque joueur garde tout le butin du run ; défaite = seulement l'objet le plus rare. Jusqu'à 2 objets équipés au début d'un run.
@@ -159,6 +168,7 @@ Mines (paroi rocheuse, sol de terre, étais avec lanterne, rails, wagonnet, cris
 Sanctuaire (pierre noire à runes lumineuses, dalles gravées, obélisque, brasero, bibliothèque, cristaux, pierres runiques flottantes),
 Forge du Dragon-Roi (niveau 4 : roche de la mine teintée de rouge, obélisques, braseros, braises qui montent ; ses ennemis réutilisent des modèles existants recolorés via `model`, `look` et `scale` dans `ENEMIES`, et le boss Ignar est le modèle du dragonnet agrandi ×4),
 Néant astral (niveau 5 : pierre du sanctuaire dans des tons bleu nuit, cristaux, pierres flottantes, poussière d'étoiles ; boss Vorath ou le Colosse astral). Les ennemis du niveau 5, les boss alternatifs (Reine des rats, Grok, Chevalier de la mort, Vorath, Colosse astral) et le Nécromancien ont chacun leur propre modèle articulé (scripts Blender `chars_new` et `pets_new`),
+Abysses engloutis (niveau 6 : ruines englouties teintées de bleu-vert, coraux, algues, bénitiers géants, bulles qui remontent ; ennemis Noyé, Homme-poisson, Crabe abyssal, Méduse spectrale ; boss le Kraken ou Thalassa, tous modélisés et articulés dans Blender, décor dans le script `theme_abyss`),
 et du mobilier commun (râtelier d'armes, table, couchage) placé selon le type de salle (`ROOM_DRESSING`).
 Ajouter un biome = modéliser ses pièces, les exporter dans `themes.glb`, puis ajouter une entrée dans `THEMES`.
 
@@ -192,7 +202,8 @@ Mesures sur une salle de combat avec 4 héros (navigateur, mode téléphone) :
 - **Fusion au chargement** (`src/scene/kit.js`) : les sous-maillages ordinaires d'un modèle sont fusionnés, la couleur
   du matériau étant cuite dans les couleurs de sommets ; matériaux en simple face (Blender exporte en double face).
 - **Personnages en un seul maillage** à squelette rigide (`skinCharacters`) : 4 héros = 6 appels de dessin au lieu de 105.
-- **Résolution adaptative** : baisse sous 40 i/s, remonte quand c'est fluide (plancher ×1). Pas d'antialiasing ni
+- **Rendu limité à 30 i/s** (`FRAME_MS` dans `tick()`) : moitié moins de calcul et de batterie.
+- **Résolution adaptative** : baisse sous 22 i/s, remonte quand c'est fluide (plancher ×1). Pas d'antialiasing ni
   d'ombres sur mobile.
 - **Compteur** : ajouter `?fps` à l'adresse (ex. `https://roguelite-d1977.web.app/?fps`) pour afficher images/s,
   appels de dessin, triangles, lumières et résolution, y compris sur téléphone.

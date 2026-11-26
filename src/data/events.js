@@ -25,6 +25,13 @@ export const ENEMIES = {
   horreur_astrale: { name: 'Horreur astrale', hp: 26, dmg: 10, dc: 16, color: 0x9b30c0, shape: 'brute', scale: 1.5, xp: 17, gold: [16, 28], intents: { attack: 2, heavy: 2, enrage: 1, drain: 1 } },
   gardien_cristal: { name: 'Gardien de cristal', hp: 28, dmg: 9, dc: 16, color: 0x30c0e0, shape: 'brute', scale: 0.9, xp: 16, gold: [16, 28], intents: { attack: 2, heavy: 1, defend: 2 } },
   vorath: { name: "Vorath, le Dévoreur d'étoiles", hp: 54, dmg: 12, dc: 17, color: 0x5a1a9b, shape: 'ghost', boss: true, scale: 1.4, xp: 80, gold: [120, 180], intents: { attack: 3, heavy: 3, drain: 2, enrage: 1 } },
+  // Niveau 6 : les Abysses engloutis
+  noye: { name: 'Noyé', hp: 18, dmg: 9, dc: 17, color: 0x4a7a78, shape: 'humanoid', undead: true, xp: 15, gold: [14, 26], intents: { attack: 3, poison: 1, drain: 1 } },
+  homme_poisson: { name: 'Homme-poisson', hp: 22, dmg: 10, dc: 17, color: 0x2a9a8a, shape: 'humanoid', xp: 16, gold: [16, 28], intents: { attack: 3, heavy: 2, defend: 1 } },
+  crabe_abyssal: { name: 'Crabe abyssal', hp: 30, dmg: 9, dc: 18, color: 0xc0502a, shape: 'rat', xp: 18, gold: [18, 30], intents: { attack: 2, defend: 3, heavy: 1 } },
+  meduse: { name: 'Méduse spectrale', hp: 20, dmg: 10, dc: 17, color: 0x60d0ff, shape: 'ghost', xp: 17, gold: [16, 28], intents: { attack: 2, poison: 3, drain: 1 } },
+  kraken: { name: 'Le Kraken des profondeurs', hp: 64, dmg: 13, dc: 18, color: 0x7a2a5a, shape: 'brute', boss: true, scale: 1.25, xp: 95, gold: [140, 210], intents: { attack: 3, heavy: 3, poison: 1, enrage: 1 } },
+  thalassa: { name: 'Thalassa, Reine des sirènes', hp: 58, dmg: 13, dc: 18, color: 0x30b0a0, shape: 'humanoid', boss: true, scale: 1.3, xp: 95, gold: [140, 210], intents: { attack: 3, heavy: 2, drain: 3, defend: 1 } },
   colosse_astral: { name: 'Le Colosse astral', hp: 60, dmg: 11, dc: 17, color: 0x2a8cc0, shape: 'brute', boss: true, scale: 1.15, xp: 80, gold: [120, 180], intents: { attack: 2, heavy: 3, defend: 2, drain: 1 } },
   liche: { name: 'La Liche', hp: 40, dmg: 10, dc: 15, color: 0xb388ff, shape: 'ghost', boss: true, undead: true, xp: 40, gold: [60, 90], intents: { attack: 3, heavy: 2, poison: 2, enrage: 1 } },
 };
